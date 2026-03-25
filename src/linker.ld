@@ -8,6 +8,8 @@ MEMORY {
 SECTIONS {
     . = 0x80000000;
 
+    _kernel_start = .;
+
     .text : {
         *(.text.boot)
         *(.text .text.*)
@@ -26,6 +28,8 @@ SECTIONS {
         *(.bss .bss.*)
         ebss = .;
     } > RAM
+
+    _kernel_end = .;
 
     /DISCARD/ : {
         *(.eh_frame)
