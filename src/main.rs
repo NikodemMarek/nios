@@ -2,35 +2,66 @@
 #![no_main]
 
 use core::arch::global_asm;
+use core::fmt::Write;
 use core::panic::PanicInfo;
 
-global_asm!(include_str!("trap.s"));
+struct Uart;
+impl Uart {
+    const ADDRESS: *mut u8 = 0x10000000 as *mut u8;
 
-const UART: *mut u8 = 0x10000000 as *mut u8;
-
-fn uart_print(s: &str) {
-    for c in s.bytes() {
-        unsafe {
-            UART.write_volatile(c);
+    fn print(s: &str) {
+        for c in s.bytes() {
+            unsafe {
+                Uart::ADDRESS.write_volatile(c);
+            }
         }
     }
 }
+impl Write for Uart {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        Uart::print(s);
+        Ok(())
+    }
+}
+
+global_asm!(include_str!("trap.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
-    uart_print("Hello from nios!\n");
+    let _ = writeln!(Uart, "Hello from nios!");
     unsafe { core::arch::asm!("ecall") };
     loop {}
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_handler(machine_cause: u64) -> () {
-    if machine_cause == 8 {
-        uart_print("ecall trap called!\n");
-        todo!("handle ecall")
+pub extern "C" fn trap_handler(machine_cause: u32) {
+    let is_exception = (machine_cause >> 31) & 1 == 0;
+    let cause = machine_cause & 0b01111111111111111111111111111111;
+
+    if is_exception {
+        let cause_str = match cause {
+            0 => "Instruction Address Misaligned",
+            1 => "Instruction Access Fault",
+            2 => "Illegal Instruction",
+            3 => "Breakpoint",
+            4 => "Load Address Misaligned",
+            8 => "Environment Call (U-mode)",
+            11 => "Environment Call (M-mode)",
+            12 => "Instruction Page Fault",
+            15 => "Store Page Fault",
+            _ => "Unknown",
+        };
+        let _ = write!(Uart, "Exception trap called, cause: [{cause}] {cause_str}");
+        todo!("handle exception")
     } else {
-        uart_print("error trap called!\n");
-        todo!("handle error")
+        let cause_str = match cause {
+            3 => "Machine Software Interrupt",
+            7 => "Machine Timer Interrupt",
+            11 => "Machine External Interrupt",
+            _ => "Unknown",
+        };
+        let _ = write!(Uart, "Interrupt trap called, cause: [{cause}] {cause_str}");
+        todo!("handle interrupt")
     }
 }
 
