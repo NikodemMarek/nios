@@ -1,0 +1,39 @@
+# nios
+
+A simple operating system written from scratch for RISC-V.
+
+### Roadmap
+
+This is a rough roadmap for the project, it can and will change regularly.
+Goal is to build features incrementally, making sure it just works, improving later.
+
+- [x] Kernel init
+- [x] Simple trap handling
+- [ ] Physical Memory Manager
+- [ ] Virtual Memory and Paging
+- [ ] Kernel Heap (kmalloc)
+- [ ] Multitasking and Context Switching
+
+### Running
+
+1. With nix
+
+```sh
+direnv allow
+run
+```
+
+This creates the enviroment with devenv and runs the project in qemu virtual machine.
+
+2. Without nix
+
+```sh
+cargo build
+qemu-system-riscv64 \
+  -machine virt \
+  -cpu rv64 \
+  -nographic \
+  -bios none \
+  -kernel target/riscv64gc-unknown-none-elf/debug/nios \
+  -serial mon:stdio
+```
