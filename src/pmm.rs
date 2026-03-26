@@ -6,13 +6,13 @@ unsafe extern "C" {
 const SIZE: u64 = 128 * 1024 * 1024;
 const PAGE_SIZE: u64 = 4096;
 
-struct Page {
-    index: u64,
+pub struct Page {
+    pub index: u64,
     start: u64,
 }
 
-struct Pmm {
-    bitmap: *mut u64,
+pub struct Pmm {
+    pub bitmap: *mut u64,
     len: u64,
 }
 impl Pmm {
@@ -21,7 +21,8 @@ impl Pmm {
         let kernel_end = &raw const _kernel_end as u64;
         let kernel_occupied_pages = (kernel_end - kernel_start) / PAGE_SIZE + 1;
 
-        let bitmap_start_ptr = kernel_end as *mut u64;
+        let bitmap_start = (kernel_end + 7) & !7;
+        let bitmap_start_ptr = bitmap_start as *mut u64;
         let bitmap_size = SIZE / PAGE_SIZE / 64;
         let bitmap_size_bytes = SIZE / PAGE_SIZE / 8;
         let bitmap_occupied_pages = bitmap_size_bytes / PAGE_SIZE + 1;

@@ -14,8 +14,15 @@ global_asm!(include_str!("main.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
+    let mut pmm = pmm::Pmm::new();
+
+    let p1 = pmm.alloc();
+    let p2 = pmm.alloc();
+    pmm.free(p1.index);
+    pmm.free(p2.index);
+
     let _ = writeln!(Uart, "Hello from nios!");
-    unsafe { core::arch::asm!("ecall") };
+
     loop {}
 }
 
