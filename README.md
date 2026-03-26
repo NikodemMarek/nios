@@ -9,7 +9,7 @@ Goal is to build features incrementally, making sure it just works, improving la
 
 - [x] Kernel init
 - [x] Simple trap handling
-- [ ] Physical Memory Manager
+- [x] Physical Memory Manager
 - [ ] Virtual Memory and Paging
 - [ ] Kernel Heap (kmalloc)
 - [ ] Multitasking and Context Switching
