@@ -2,29 +2,13 @@
 #![no_main]
 
 mod pmm;
+mod uart;
 
 use core::arch::global_asm;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-struct Uart;
-impl Uart {
-    const ADDRESS: *mut u8 = 0x10000000 as *mut u8;
-
-    fn print(s: &str) {
-        for c in s.bytes() {
-            unsafe {
-                Uart::ADDRESS.write_volatile(c);
-            }
-        }
-    }
-}
-impl Write for Uart {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        Uart::print(s);
-        Ok(())
-    }
-}
+use crate::uart::Uart;
 
 global_asm!(include_str!("trap.s"));
 
