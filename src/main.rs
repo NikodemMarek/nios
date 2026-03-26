@@ -10,7 +10,7 @@ use core::panic::PanicInfo;
 
 use crate::uart::Uart;
 
-global_asm!(include_str!("trap.s"));
+global_asm!(include_str!("main.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
