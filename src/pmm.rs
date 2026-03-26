@@ -17,14 +17,31 @@ struct Pmm {
 }
 impl Pmm {
     pub fn new() -> Pmm {
-        let bitmap_start = (&raw const _kernel_end as u64) as *mut u64;
+        let kernel_start = &raw const _kernel_start as u64;
+        let kernel_end = &raw const _kernel_end as u64;
+        let kernel_occupied_pages = (kernel_end - kernel_start) / PAGE_SIZE + 1;
+
+        let bitmap_start_ptr = kernel_end as *mut u64;
+        let bitmap_size = SIZE / PAGE_SIZE / 64;
+        let bitmap_size_bytes = SIZE / PAGE_SIZE / 8;
+        let bitmap_occupied_pages = bitmap_size_bytes / PAGE_SIZE + 1;
+
+        let mut alloc_mask = 0;
+        for _ in 0..=(kernel_occupied_pages + bitmap_occupied_pages) {
+            alloc_mask = (alloc_mask << 1) | 0b1;
+        }
+
+        unsafe { *bitmap_start_ptr = alloc_mask };
+
         Pmm {
-            bitmap: bitmap_start,
-            len: SIZE / PAGE_SIZE / 64,
+            bitmap: bitmap_start_ptr,
+            len: bitmap_size,
         }
     }
 
     pub fn alloc(&mut self) -> Page {
+        let kernel_end = &raw const _kernel_end as u64;
+
         for n in 0..self.len {
             for i in 0..64 {
                 let sector_ptr = unsafe { self.bitmap.add(n as usize) };
@@ -32,7 +49,6 @@ impl Pmm {
 
                 if (sector >> i) & 0b1 == 0 {
                     let index = (n * 64) + i;
-                    let kernel_end = &raw const _kernel_end as u64;
                     let start = kernel_end + index * PAGE_SIZE;
 
                     if start > kernel_end + SIZE {
