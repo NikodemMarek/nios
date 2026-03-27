@@ -4,11 +4,11 @@ unsafe extern "C" {
 }
 
 const SIZE: u64 = 128 * 1024 * 1024;
-const PAGE_SIZE: u64 = 4096;
+pub const PAGE_SIZE: u64 = 4096;
 
 pub struct Page {
     pub index: u64,
-    start: u64,
+    pub start_ptr: *mut u8,
 }
 
 pub struct Pmm {
@@ -57,7 +57,10 @@ impl Pmm {
                     }
 
                     unsafe { *sector_ptr = sector | (0b1 << i) };
-                    return Page { index, start };
+                    return Page {
+                        index,
+                        start_ptr: start as *mut u8,
+                    };
                 }
             }
         }
