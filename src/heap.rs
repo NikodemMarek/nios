@@ -68,7 +68,7 @@ impl Heap {
 
         unsafe {
             *header_ptr = header.encode();
-            fit_ptr.add(8)
+            fit_ptr.add(HEADER_SIZE as usize)
         }
     }
 
@@ -111,5 +111,14 @@ impl Heap {
         None
     }
 
-    pub fn free(&mut self, loc: *mut u64) {}
+    pub fn free(&mut self, loc: *mut u64) {
+        let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
+        let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
+        let header = Header::decode(raw_header);
+
+        let header = Header::free(header.block_size);
+        unsafe {
+            *block_ptr = header.encode();
+        }
+    }
 }
