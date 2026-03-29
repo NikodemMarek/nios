@@ -6,20 +6,20 @@ use core::fmt::Write;
 
 const HEADER_SIZE: u64 = 8;
 
-struct Header {
-    size: u64,
+struct Block {
+    capacity: u64,
     is_occupied: bool,
 }
-impl Header {
+impl Block {
     fn free(size: u64) -> Self {
-        Header {
-            size,
+        Block {
+            capacity: size,
             is_occupied: false,
         }
     }
     fn occupied(size: u64) -> Self {
-        Header {
-            size,
+        Block {
+            capacity: size,
             is_occupied: true,
         }
     }
@@ -28,25 +28,25 @@ impl Header {
         // This assumes out block size will never be higher than 2^63, so we can use first bit
         // to store the info.
         if self.is_occupied {
-            self.size | 1 << 63
+            self.capacity | 1 << 63
         } else {
-            self.size & !(1 << 63)
+            self.capacity & !(1 << 63)
         }
     }
     fn decode(raw: u64) -> Self {
-        Header {
-            size: raw & !(1 << 63),
+        Block {
+            capacity: raw & !(1 << 63),
             is_occupied: (raw >> 63) & 1 == 1,
         }
     }
 
-    fn total_size(&self) -> u64 {
-        HEADER_SIZE + self.size
+    fn size(&self) -> u64 {
+        HEADER_SIZE + self.capacity
     }
 
-    unsafe fn from_ptr(block_ptr: *const u64) -> Header {
+    unsafe fn from_ptr(block_ptr: *const u64) -> Block {
         let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
-        Header::decode(raw_header)
+        Block::decode(raw_header)
     }
 }
 
@@ -74,20 +74,20 @@ impl Heap {
         let fit_ptr = self.first_page_with_fit(pmm, size);
 
         // Split block into two chunks, if the block size allows that.
-        let header = unsafe { Header::from_ptr(fit_ptr as *const u64) };
-        if header.size > size + HEADER_SIZE {
-            let split_header = Header::free(header.size - size - HEADER_SIZE);
+        let block = unsafe { Block::from_ptr(fit_ptr as *const u64) };
+        if block.capacity > size + HEADER_SIZE {
+            let split_header = Block::free(block.capacity - size - HEADER_SIZE);
             unsafe {
                 let split_ptr = fit_ptr.add(block_size as usize) as *mut u64;
                 *split_ptr = split_header.encode();
             }
         }
 
-        let header = Header::occupied(size);
-        let header_ptr = fit_ptr as *mut u64;
+        let block = Block::occupied(size);
+        let block_ptr = fit_ptr as *mut u64;
 
         unsafe {
-            *header_ptr = header.encode();
+            *block_ptr = block.encode();
             fit_ptr.add(HEADER_SIZE as usize)
         }
     }
@@ -116,14 +116,14 @@ impl Heap {
         let mut block_ptr = *start_ptr;
 
         while unsafe { block_ptr.offset_from(*start_ptr) as u64 } < PAGE_SIZE - 1 {
-            let header = unsafe { Header::from_ptr(block_ptr as *const u64) };
+            let block = unsafe { Block::from_ptr(block_ptr as *const u64) };
 
-            if !header.is_occupied && header.size >= size {
+            if !block.is_occupied && block.capacity >= size {
                 return Some(block_ptr);
             }
 
             unsafe {
-                block_ptr = block_ptr.add(header.size as usize);
+                block_ptr = block_ptr.add(block.capacity as usize);
             }
         }
 
@@ -134,10 +134,10 @@ impl Heap {
         let page = pmm.alloc();
 
         // Create initial free block on a page, that spans the whole page.
-        let header = Header::free(PAGE_SIZE - HEADER_SIZE);
+        let block = Block::free(PAGE_SIZE - HEADER_SIZE);
         unsafe {
             let block_ptr = page.start_ptr as *mut u64;
-            *block_ptr = header.encode();
+            *block_ptr = block.encode();
         }
 
         page
@@ -145,17 +145,17 @@ impl Heap {
 
     pub fn free(&mut self, loc: *mut u64) {
         let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
-        let header = unsafe { Header::from_ptr(block_ptr) };
+        let block = unsafe { Block::from_ptr(block_ptr) };
 
-        let next_header = unsafe { Header::from_ptr(block_ptr.add(header.total_size() as usize)) };
-        let header = Header::free(if next_header.is_occupied {
-            header.size
+        let next_block = unsafe { Block::from_ptr(block_ptr.add(block.size() as usize)) };
+        let block = Block::free(if next_block.is_occupied {
+            block.capacity
         } else {
-            header.size + next_header.total_size()
+            block.capacity + next_block.size()
         });
 
         unsafe {
-            *block_ptr = header.encode();
+            *block_ptr = block.encode();
         }
     }
 }
