@@ -40,6 +40,10 @@ impl Header {
         }
     }
 
+    fn total_size(&self) -> u64 {
+        HEADER_SIZE + self.size
+    }
+
     unsafe fn from_ptr(block_ptr: *const u64) -> Header {
         let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
         Header::decode(raw_header)
@@ -67,7 +71,7 @@ impl Heap {
             panic!("block size too big");
         }
 
-        let fit_ptr = self.first_page_with_fit(pmm, block_size);
+        let fit_ptr = self.first_page_with_fit(pmm, size);
 
         // Split block into two chunks, if the block size allows that.
         let header = unsafe { Header::from_ptr(fit_ptr as *const u64) };
@@ -79,7 +83,7 @@ impl Heap {
             }
         }
 
-        let header = Header::occupied(block_size);
+        let header = Header::occupied(size);
         let header_ptr = fit_ptr as *mut u64;
 
         unsafe {
@@ -89,7 +93,7 @@ impl Heap {
     }
 
     fn first_page_with_fit(&mut self, pmm: &mut Pmm, size: u64) -> *mut u8 {
-        assert!(size <= PAGE_SIZE);
+        assert!(HEADER_SIZE + size <= PAGE_SIZE);
 
         for i in 0..self.allocated_pages {
             let page = unsafe { &*self.pages_ptr.add(i) };
@@ -143,12 +147,11 @@ impl Heap {
         let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
         let header = unsafe { Header::from_ptr(block_ptr) };
 
-        let next_header =
-            unsafe { Header::from_ptr(block_ptr.add((HEADER_SIZE + header.size) as usize)) };
+        let next_header = unsafe { Header::from_ptr(block_ptr.add(header.total_size() as usize)) };
         let header = Header::free(if next_header.is_occupied {
             header.size
         } else {
-            header.size + HEADER_SIZE + next_header.size
+            header.size + next_header.total_size()
         });
 
         unsafe {
