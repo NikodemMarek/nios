@@ -96,8 +96,7 @@ impl Heap {
         let mut block_ptr = *start_ptr;
 
         while unsafe { block_ptr.offset_from(*start_ptr) as u64 } < PAGE_SIZE - 1 {
-            let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
-            let header = Header::decode(raw_header);
+            let header = Heap::get_header(block_ptr as *const u64);
 
             if !header.is_occupied && header.block_size >= size {
                 return Some(block_ptr);
@@ -113,12 +112,16 @@ impl Heap {
 
     pub fn free(&mut self, loc: *mut u64) {
         let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
-        let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
-        let header = Header::decode(raw_header);
+        let header = Heap::get_header(block_ptr);
 
         let header = Header::free(header.block_size);
         unsafe {
             *block_ptr = header.encode();
         }
+    }
+
+    fn get_header(block_ptr: *const u64) -> Header {
+        let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
+        Header::decode(raw_header)
     }
 }
