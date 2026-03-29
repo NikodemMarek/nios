@@ -7,19 +7,19 @@ use core::fmt::Write;
 const HEADER_SIZE: u64 = 8;
 
 struct Header {
-    block_size: u64,
+    size: u64,
     is_occupied: bool,
 }
 impl Header {
     fn free(size: u64) -> Self {
         Header {
-            block_size: size,
+            size,
             is_occupied: false,
         }
     }
     fn occupied(size: u64) -> Self {
         Header {
-            block_size: size,
+            size,
             is_occupied: true,
         }
     }
@@ -28,19 +28,19 @@ impl Header {
         // This assumes out block size will never be higher than 2^63, so we can use first bit
         // to store the info.
         if self.is_occupied {
-            self.block_size | 1 << 63
+            self.size | 1 << 63
         } else {
-            self.block_size & !(1 << 63)
+            self.size & !(1 << 63)
         }
     }
     fn decode(raw: u64) -> Self {
         Header {
-            block_size: raw & !(1 << 63),
+            size: raw & !(1 << 63),
             is_occupied: (raw >> 63) & 1 == 1,
         }
     }
 
-    fn from_ptr(block_ptr: *const u64) -> Header {
+    unsafe fn from_ptr(block_ptr: *const u64) -> Header {
         let raw_header: u64 = unsafe { *(*block_ptr as *const u64) };
         Header::decode(raw_header)
     }
@@ -70,9 +70,9 @@ impl Heap {
         let fit_ptr = self.first_page_with_fit(pmm, block_size);
 
         // Split block into two chunks, if the block size allows that.
-        let header = Header::from_ptr(fit_ptr as *const u64);
-        if header.block_size > size + HEADER_SIZE {
-            let split_header = Header::free(header.block_size - size - HEADER_SIZE);
+        let header = unsafe { Header::from_ptr(fit_ptr as *const u64) };
+        if header.size > size + HEADER_SIZE {
+            let split_header = Header::free(header.size - size - HEADER_SIZE);
             unsafe {
                 let split_ptr = fit_ptr.add(block_size as usize) as *mut u64;
                 *split_ptr = split_header.encode();
@@ -112,14 +112,14 @@ impl Heap {
         let mut block_ptr = *start_ptr;
 
         while unsafe { block_ptr.offset_from(*start_ptr) as u64 } < PAGE_SIZE - 1 {
-            let header = Header::from_ptr(block_ptr as *const u64);
+            let header = unsafe { Header::from_ptr(block_ptr as *const u64) };
 
-            if !header.is_occupied && header.block_size >= size {
+            if !header.is_occupied && header.size >= size {
                 return Some(block_ptr);
             }
 
             unsafe {
-                block_ptr = block_ptr.add(header.block_size as usize);
+                block_ptr = block_ptr.add(header.size as usize);
             }
         }
 
@@ -141,14 +141,14 @@ impl Heap {
 
     pub fn free(&mut self, loc: *mut u64) {
         let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
-        let header = Header::from_ptr(block_ptr);
+        let header = unsafe { Header::from_ptr(block_ptr) };
 
         let next_header =
-            Header::from_ptr(unsafe { block_ptr.add((HEADER_SIZE + header.block_size) as usize) });
+            unsafe { Header::from_ptr(block_ptr.add((HEADER_SIZE + header.size) as usize)) };
         let header = Header::free(if next_header.is_occupied {
-            header.block_size
+            header.size
         } else {
-            header.block_size + HEADER_SIZE + next_header.block_size
+            header.size + HEADER_SIZE + next_header.size
         });
 
         unsafe {
