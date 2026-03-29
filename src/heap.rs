@@ -82,7 +82,7 @@ impl Heap {
             }
         }
 
-        let page = pmm.alloc();
+        let page = Heap::request_page(pmm);
         let fit_ptr = Heap::first_fit(&page, size).unwrap();
         unsafe {
             let new_page_ptr = self.pages_ptr.add(self.allocated_pages);
@@ -108,6 +108,19 @@ impl Heap {
         }
 
         None
+    }
+
+    fn request_page(pmm: &mut Pmm) -> Page {
+        let page = pmm.alloc();
+
+        // Create initial free block on a page, that spans the whole page.
+        let header = Header::free(PAGE_SIZE - HEADER_SIZE);
+        unsafe {
+            let block_ptr = page.start_ptr as *mut u64;
+            *block_ptr = header.encode();
+        }
+
+        page
     }
 
     pub fn free(&mut self, loc: *mut u64) {
