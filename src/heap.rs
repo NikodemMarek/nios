@@ -143,7 +143,14 @@ impl Heap {
         let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
         let header = Header::from_ptr(block_ptr);
 
-        let header = Header::free(header.block_size);
+        let next_header =
+            Header::from_ptr(unsafe { block_ptr.add((HEADER_SIZE + header.block_size) as usize) });
+        let header = Header::free(if next_header.is_occupied {
+            header.block_size
+        } else {
+            header.block_size + HEADER_SIZE + next_header.block_size
+        });
+
         unsafe {
             *block_ptr = header.encode();
         }
