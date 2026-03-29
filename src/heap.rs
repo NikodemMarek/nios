@@ -63,6 +63,17 @@ impl Heap {
         }
 
         let fit_ptr = self.first_page_with_fit(pmm, block_size);
+
+        // Split block into two chunks, if the block size allows that.
+        let header = Heap::get_header(fit_ptr as *const u64);
+        if header.block_size > size + HEADER_SIZE {
+            let split_header = Header::free(header.block_size - size - HEADER_SIZE);
+            unsafe {
+                let split_ptr = fit_ptr.add(block_size as usize) as *mut u64;
+                *split_ptr = split_header.encode();
+            }
+        }
+
         let header = Header::occupied(block_size);
         let header_ptr = fit_ptr as *mut u64;
 
