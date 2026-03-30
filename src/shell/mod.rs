@@ -1,63 +1,75 @@
-use core::{fmt::Write, ptr::copy_nonoverlapping};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::fmt::Write;
 
-use crate::{heap::Heap, uart::Uart};
+use crate::uart::Uart;
 
-pub fn run(heap: &mut Heap) {
-    fn write(buffer: &mut [u8]) {
+enum Command {
+    Echo(String),
+}
+
+pub fn run() {
+    fn write(buffer: &str) {
         clear_line();
-        write!(Uart, "> {}", core::str::from_utf8(buffer).unwrap()).unwrap();
+        write!(Uart, "> {}", buffer).unwrap();
     }
 
     loop {
         write!(Uart, "> ").unwrap();
-        let input = read_line(heap, write);
+        let input = read_line(write);
         writeln!(Uart).unwrap();
 
-        writeln!(Uart, "prompt: {}", core::str::from_utf8(input).unwrap()).unwrap();
+        let command = parse(&input);
+        match command {
+            Ok(command) => match command {
+                Command::Echo(message) => writeln!(Uart, "{message}").unwrap(),
+            },
+            Err(err) => {
+                writeln!(Uart, "{err}").unwrap();
+            }
+        }
     }
 }
 
-pub fn read_line(heap: &mut Heap, write: fn(&mut [u8])) -> &mut [u8] {
-    let mut size = 64;
-    let mut buffer = heap.alloc_array(size);
+fn parse(input: &str) -> Result<Command, String> {
+    let mut parts = input.split(' ');
+    match parts.next() {
+        Some("echo") => {
+            let message = parts.collect::<Vec<_>>().join(" ");
+            Ok(Command::Echo(message))
+        }
+        Some(command) => Err(format!("Unknown command: {command}")),
+        None => Err("No command provided".to_string()),
+    }
+}
 
-    let mut i = 0;
+fn read_line(write: fn(&str)) -> String {
+    let mut buffer = String::with_capacity(128);
+
     loop {
         let char = Uart::read();
 
         match char {
             13 => {
-                write(buffer);
+                write(&buffer);
                 return buffer;
             }
             127 => {
-                i -= 1;
-                buffer[i] = 0;
-                write(buffer);
+                buffer.pop();
+                write(&buffer);
             }
             _ => {
-                buffer[i] = char;
-                i += 1;
-                write(buffer);
+                buffer.push(char as char);
+                write(&buffer);
             }
-        }
-
-        // Resize the buffer to fit the input
-        if i == size {
-            let new_size = if size > 512 { size + 512 } else { size * 2 };
-            let new_buffer = heap.alloc_array(new_size);
-            unsafe {
-                copy_nonoverlapping(buffer.as_ptr(), new_buffer.as_mut_ptr(), size);
-            }
-
-            size = new_size;
-            heap.free(buffer.as_mut_ptr());
-            buffer = new_buffer;
         }
     }
 }
 
-pub fn clear_line() {
+fn clear_line() {
     let _ = write!(Uart, "\r");
     for _ in 0..250 {
         let _ = write!(Uart, " ");

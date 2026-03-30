@@ -29,6 +29,8 @@ pub extern "C" fn kernel_main() -> ! {
 
     *ALLOCATOR.0.borrow_mut() = Some(heap);
 
+    shell::run();
+
     loop {}
 }
 
