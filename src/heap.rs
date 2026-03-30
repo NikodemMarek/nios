@@ -4,20 +4,20 @@ use crate::{
 };
 use core::fmt::Write;
 
-const HEADER_SIZE: u64 = 8;
+const HEADER_SIZE: usize = 8;
 
 struct Block {
-    capacity: u64,
+    capacity: usize,
     is_occupied: bool,
 }
 impl Block {
-    fn free(size: u64) -> Self {
+    fn free(size: usize) -> Self {
         Block {
             capacity: size,
             is_occupied: false,
         }
     }
-    fn occupied(size: u64) -> Self {
+    fn occupied(size: usize) -> Self {
         Block {
             capacity: size,
             is_occupied: true,
@@ -28,19 +28,19 @@ impl Block {
         // This assumes out block size will never be higher than 2^63, so we can use first bit
         // to store the info.
         if self.is_occupied {
-            self.capacity | 1 << 63
+            self.capacity as u64 | 1 << 63
         } else {
-            self.capacity & !(1 << 63)
+            self.capacity as u64 & !(1 << 63)
         }
     }
     fn decode(raw: u64) -> Self {
         Block {
-            capacity: raw & !(1 << 63),
+            capacity: (raw & !(1 << 63)) as usize,
             is_occupied: (raw >> 63) & 1 == 1,
         }
     }
 
-    fn size(&self) -> u64 {
+    fn size(&self) -> usize {
         HEADER_SIZE + self.capacity
     }
 
@@ -68,16 +68,10 @@ impl Heap {
         heap
     }
 
-    pub fn alloc_array<'a, T: Sized>(&mut self, capacity: usize) -> &'a mut [T] {
-        let size = capacity * size_of::<T>();
-        let array_ptr = self.malloc(size as u64) as *mut T;
-        unsafe { core::slice::from_raw_parts_mut(array_ptr, capacity) }
-    }
-
-    pub fn malloc(&mut self, size: u64) -> *const u8 {
+    pub fn malloc(&mut self, size: usize) -> *const u8 {
         let block = Block::occupied(size);
 
-        if block.size() > PAGE_SIZE {
+        if block.size() > PAGE_SIZE as usize {
             let _ = writeln!(Uart, "Cannot allocate {size} bytes, block too big");
             panic!("block size too big");
         }
@@ -89,7 +83,7 @@ impl Heap {
         if block.capacity > size + HEADER_SIZE {
             let split_header = Block::free(block.capacity - size - HEADER_SIZE);
             unsafe {
-                let split_ptr = fit_ptr.add(block.size() as usize) as *mut u64;
+                let split_ptr = fit_ptr.add(block.size()) as *mut u64;
                 *split_ptr = split_header.encode();
             }
         }
@@ -99,12 +93,12 @@ impl Heap {
 
         unsafe {
             *block_ptr = block.encode();
-            fit_ptr.add(HEADER_SIZE as usize)
+            fit_ptr.add(HEADER_SIZE)
         }
     }
 
-    fn first_page_with_fit(&mut self, size: u64) -> *const u8 {
-        assert!(HEADER_SIZE + size <= PAGE_SIZE);
+    fn first_page_with_fit(&mut self, size: usize) -> *const u8 {
+        assert!(HEADER_SIZE + size <= PAGE_SIZE as usize);
 
         for i in 0..self.allocated_pages {
             let page = unsafe { &*self.pages_ptr.add(i) };
@@ -118,7 +112,7 @@ impl Heap {
             .expect("If block passed the assertion, it has to fit on an empty page")
     }
 
-    fn first_fit(page_ptr: *const u8, size: u64) -> Option<*const u8> {
+    fn first_fit(page_ptr: *const u8, size: usize) -> Option<*const u8> {
         let mut block_ptr = page_ptr;
 
         while unsafe { block_ptr.offset_from(page_ptr) as u64 } < PAGE_SIZE {
@@ -129,7 +123,7 @@ impl Heap {
             }
 
             unsafe {
-                block_ptr = block_ptr.add(block.size() as usize);
+                block_ptr = block_ptr.add(block.size());
             }
         }
 
@@ -151,7 +145,7 @@ impl Heap {
         let page = pmm.alloc();
 
         // Create initial free block on a page, that spans the whole page.
-        let block = Block::free(PAGE_SIZE - HEADER_SIZE);
+        let block = Block::free(PAGE_SIZE as usize - HEADER_SIZE);
         unsafe {
             let block_ptr = page.start_ptr as *mut u64;
             *block_ptr = block.encode();
@@ -161,11 +155,11 @@ impl Heap {
     }
 
     pub fn free(&mut self, loc: *mut u8) {
-        let block_ptr = unsafe { loc.sub(HEADER_SIZE as usize) };
+        let block_ptr = unsafe { loc.sub(HEADER_SIZE) };
         let block = unsafe { Block::from_ptr(block_ptr) };
 
         let next_block = unsafe {
-            let next_block_ptr = block_ptr.add(block.size() as usize);
+            let next_block_ptr = block_ptr.add(block.size());
             Block::from_ptr(next_block_ptr)
         };
         let block = Block::free(if next_block.is_occupied {

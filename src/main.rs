@@ -51,7 +51,7 @@ impl GlobalAllocator {
 unsafe impl GlobalAlloc for GlobalAllocator {
     #[inline]
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        self.get().malloc(layout.size() as u64) as *mut u8
+        self.get().malloc(layout.size()) as *mut u8
     }
 
     #[inline]
