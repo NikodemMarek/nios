@@ -16,10 +16,10 @@ global_asm!(include_str!("main.s"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
-    let mut pmm = pmm::Pmm::new();
-    let mut heap = heap::Heap::new(&mut pmm);
+    let pmm = pmm::Pmm::new();
+    let mut heap = heap::Heap::new(pmm);
 
-    let block_ptr = heap.malloc(&mut pmm, 64);
+    let block_ptr = heap.malloc(64);
     unsafe {
         let msg = b"Hello malloc!\0";
         copy_nonoverlapping(msg.as_ptr(), block_ptr as *mut u8, msg.len());

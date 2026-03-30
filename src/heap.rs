@@ -51,22 +51,24 @@ impl Block {
 }
 
 pub struct Heap {
+    pmm: Pmm,
     allocated_pages: usize,
     pages_ptr: *mut Page,
 }
 impl Heap {
-    pub fn new(pmm: &mut Pmm) -> Heap {
+    pub fn new(mut pmm: Pmm) -> Heap {
         let pages_page = pmm.alloc();
         let mut heap = Heap {
+            pmm,
             allocated_pages: 0,
             pages_ptr: pages_page.start_ptr as *mut Page,
         };
 
-        heap.new_page(pmm);
+        heap.new_page();
         heap
     }
 
-    pub fn malloc(&mut self, pmm: &mut Pmm, size: u64) -> *const u8 {
+    pub fn malloc(&mut self, size: u64) -> *const u8 {
         let block = Block::occupied(size);
 
         if block.size() > PAGE_SIZE {
@@ -74,7 +76,7 @@ impl Heap {
             panic!("block size too big");
         }
 
-        let fit_ptr = self.first_page_with_fit(pmm, size);
+        let fit_ptr = self.first_page_with_fit(size);
 
         // Split block into two chunks, if the block size allows that.
         let block = unsafe { Block::from_ptr(fit_ptr) };
@@ -95,7 +97,7 @@ impl Heap {
         }
     }
 
-    fn first_page_with_fit(&mut self, pmm: &mut Pmm, size: u64) -> *const u8 {
+    fn first_page_with_fit(&mut self, size: u64) -> *const u8 {
         assert!(HEADER_SIZE + size <= PAGE_SIZE);
 
         for i in 0..self.allocated_pages {
@@ -105,7 +107,7 @@ impl Heap {
             }
         }
 
-        let new_page_ptr = self.new_page(pmm);
+        let new_page_ptr = self.new_page();
         Heap::first_fit(new_page_ptr, size)
             .expect("If block passed the assertion, it has to fit on an empty page")
     }
@@ -128,8 +130,8 @@ impl Heap {
         None
     }
 
-    fn new_page(&mut self, pmm: &mut Pmm) -> *const u8 {
-        let page = Heap::request_page(pmm);
+    fn new_page(&mut self) -> *const u8 {
+        let page = Heap::request_page(&mut self.pmm);
         let page_ptr_cp = page.start_ptr;
         unsafe {
             let page_ptr = self.pages_ptr.add(self.allocated_pages);
