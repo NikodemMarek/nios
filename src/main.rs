@@ -30,9 +30,10 @@ pub extern "C" fn kernel_main() -> ! {
         }
     };
 
+    let buffer = heap.alloc_array(100);
     loop {
-        let c = Uart::read();
-        let _ = write!(Uart, "{}", c);
+        uart::read_line(buffer);
+        let _ = writeln!(Uart, "entered: {}", core::str::from_utf8(buffer).unwrap());
     }
 }
 

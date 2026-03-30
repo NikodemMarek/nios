@@ -12,7 +12,7 @@ impl Uart {
         }
     }
 
-    pub fn read() -> char {
+    pub fn read() -> u8 {
         let lsr_ptr = unsafe { Uart::ADDRESS.add(5) };
 
         loop {
@@ -22,12 +22,36 @@ impl Uart {
             }
         }
 
-        unsafe { *Uart::ADDRESS as char }
+        unsafe { *Uart::ADDRESS }
     }
 }
 impl Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         Uart::print(s);
         Ok(())
+    }
+}
+
+pub fn read_line(buffer: &mut [u8]) {
+    let mut i = 0;
+    loop {
+        let char = Uart::read();
+        let _ = write!(Uart, "{}", char as char);
+
+        match char {
+            13 => break,
+            127 => {
+                i -= 1;
+                buffer[i] = 0;
+                for _ in 0..100 {
+                    let _ = write!(Uart, " ");
+                }
+                let _ = write!(Uart, "\r{}", core::str::from_utf8(buffer).unwrap());
+            }
+            _ => {
+                buffer[i] = char;
+                i += 1;
+            }
+        }
     }
 }
