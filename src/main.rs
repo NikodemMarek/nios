@@ -3,6 +3,7 @@
 
 mod heap;
 mod pmm;
+mod shell;
 mod uart;
 
 use core::arch::global_asm;
@@ -18,10 +19,9 @@ pub extern "C" fn kernel_main() -> ! {
     let pmm = pmm::Pmm::new();
     let mut heap = heap::Heap::new(pmm);
 
-    loop {
-        let buffer = uart::read_line(&mut heap);
-        let _ = writeln!(Uart, "entered: {}", core::str::from_utf8(buffer).unwrap());
-    }
+    shell::run(&mut heap);
+
+    loop {}
 }
 
 #[unsafe(no_mangle)]
