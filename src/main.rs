@@ -8,7 +8,6 @@ mod uart;
 use core::arch::global_asm;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::copy_nonoverlapping;
 
 use crate::uart::Uart;
 
@@ -19,20 +18,8 @@ pub extern "C" fn kernel_main() -> ! {
     let pmm = pmm::Pmm::new();
     let mut heap = heap::Heap::new(pmm);
 
-    let block_ptr = heap.malloc(64);
-    unsafe {
-        let msg = b"Hello malloc!\0";
-        copy_nonoverlapping(msg.as_ptr(), block_ptr as *mut u8, msg.len());
-
-        let cstr = core::ffi::CStr::from_ptr(block_ptr as *const core::ffi::c_char);
-        if let Ok(s) = cstr.to_str() {
-            let _ = writeln!(Uart, "{}", s);
-        }
-    };
-
-    let buffer = heap.alloc_array(100);
     loop {
-        uart::read_line(buffer);
+        let buffer = uart::read_line(&mut heap);
         let _ = writeln!(Uart, "entered: {}", core::str::from_utf8(buffer).unwrap());
     }
 }
