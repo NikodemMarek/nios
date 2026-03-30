@@ -10,9 +10,14 @@ Goal is to build features incrementally, making sure it just works, improving la
 - [x] Kernel init
 - [x] Simple trap handling
 - [x] Physical Memory Manager
-- [ ] Virtual Memory and Paging
 - [x] Kernel Heap (kmalloc)
-- [ ] Multitasking and Context Switching
+- [ ] UART input (poll LSR, read bytes)
+- [ ] Shell
+  - [ ] Line reader (buffered input, backspace handling)
+  - [ ] Command parser (tokenize input)
+  - [ ] Built-in commands
+- [ ] Virtual Memory and Paging (optional)
+- [ ] Multitasking and Context Switching (optional)
 
 ### Running
 
