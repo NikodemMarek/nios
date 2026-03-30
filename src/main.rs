@@ -93,6 +93,8 @@ pub extern "C" fn trap_handler(machine_cause: u32) {
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    writeln!(Uart, "{}", info.message()).unwrap();
+
     loop {}
 }
