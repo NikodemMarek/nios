@@ -68,6 +68,12 @@ impl Heap {
         heap
     }
 
+    pub fn alloc_array<T: Sized>(&mut self, capacity: usize) -> &mut [T] {
+        let size = capacity * size_of::<T>();
+        let array_ptr = self.malloc(size as u64) as *mut T;
+        unsafe { core::slice::from_raw_parts_mut(array_ptr, capacity) }
+    }
+
     pub fn malloc(&mut self, size: u64) -> *const u8 {
         let block = Block::occupied(size);
 
