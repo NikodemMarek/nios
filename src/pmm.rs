@@ -42,6 +42,7 @@ impl Pmm {
 
     pub fn alloc(&mut self) -> Page {
         let kernel_end = &raw const _kernel_end as u64;
+        let page_base = (kernel_end + PAGE_SIZE + 1) & !(PAGE_SIZE - 1);
 
         for n in 0..self.len {
             for i in 0..64 {
@@ -50,9 +51,9 @@ impl Pmm {
 
                 if (sector >> i) & 0b1 == 0 {
                     let index = (n * 64) + i;
-                    let start = kernel_end + index * PAGE_SIZE;
+                    let start = page_base + index * PAGE_SIZE;
 
-                    if start > kernel_end + SIZE {
+                    if start > page_base + SIZE {
                         panic!("No free pages");
                     }
 
