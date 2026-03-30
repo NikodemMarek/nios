@@ -11,7 +11,7 @@ Goal is to build features incrementally, making sure it just works, improving la
 - [x] Simple trap handling
 - [x] Physical Memory Manager
 - [ ] Virtual Memory and Paging
-- [ ] Kernel Heap (kmalloc)
+- [x] Kernel Heap (kmalloc)
 - [ ] Multitasking and Context Switching
 
 ### Running
