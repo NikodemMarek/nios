@@ -11,7 +11,7 @@ Goal is to build features incrementally, making sure it just works, improving la
 - [x] Simple trap handling
 - [x] Physical Memory Manager
 - [x] Kernel Heap (kmalloc)
-- [ ] UART input (poll LSR, read bytes)
+- [x] UART input (poll LSR, read bytes)
 - [ ] Shell
   - [ ] Line reader (buffered input, backspace handling)
   - [ ] Command parser (tokenize input)
