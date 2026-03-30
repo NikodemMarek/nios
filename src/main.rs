@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
 mod heap;
 mod pmm;
 mod shell;
@@ -25,10 +27,7 @@ pub extern "C" fn kernel_main() -> ! {
     let pmm = pmm::Pmm::new();
     let heap = Heap::new(pmm);
 
-    {
-        let mut allocator = ALLOCATOR.0.borrow_mut();
-        *allocator = Some(heap);
-    }
+    *ALLOCATOR.0.borrow_mut() = Some(heap);
 
     loop {}
 }
