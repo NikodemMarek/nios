@@ -30,7 +30,10 @@ pub extern "C" fn kernel_main() -> ! {
         }
     };
 
-    loop {}
+    loop {
+        let c = Uart::read();
+        let _ = write!(Uart, "{}", c);
+    }
 }
 
 #[unsafe(no_mangle)]

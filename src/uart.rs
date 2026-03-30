@@ -11,6 +11,19 @@ impl Uart {
             }
         }
     }
+
+    pub fn read() -> char {
+        let lsr_ptr = unsafe { Uart::ADDRESS.add(5) };
+
+        loop {
+            let is_byte_available = unsafe { *lsr_ptr } & 0b1 == 0b1;
+            if is_byte_available {
+                break;
+            }
+        }
+
+        unsafe { *Uart::ADDRESS as char }
+    }
 }
 impl Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
