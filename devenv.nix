@@ -17,14 +17,29 @@
   };
 
   scripts.run.exec = ''
-    cargo build &&
-    echo "Use Ctrl-A X to kill" &&
+    cargo build || exit 1
+
+    echo "Use Ctrl-A X to kill"
     qemu-system-riscv64 \
       -machine virt \
       -cpu rv64 \
       -nographic \
       -bios none \
       -kernel target/riscv64gc-unknown-none-elf/debug/nios \
+      -serial mon:stdio
+  '';
+
+  scripts.check.exec = ''
+    cargo build --tests || exit 1
+
+    TEST_BIN=$(cargo build --tests --message-format=json | jq -r 'select(.executable != null) | .executable')
+    echo "Use Ctrl-A X to kill"
+    qemu-system-riscv64 \
+      -machine virt \
+      -cpu rv64 \
+      -nographic \
+      -bios none \
+      -kernel $TEST_BIN \
       -serial mon:stdio
   '';
 }

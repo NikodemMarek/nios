@@ -1,21 +1,23 @@
 #![no_std]
 #![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
 
+mod global_allocator;
 mod heap;
 mod pmm;
 mod shell;
+mod traps;
 mod uart;
 
-use core::alloc::GlobalAlloc;
 use core::arch::global_asm;
-use core::cell::{RefCell, RefMut};
-use core::fmt::Write;
 use core::panic::PanicInfo;
 
+use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::uart::Uart;
 
 global_asm!(include_str!("main.s"));
 
@@ -24,79 +26,52 @@ static ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
-    let pmm = pmm::Pmm::new();
-    let heap = Heap::new(pmm);
+    if cfg!(test) {
+        #[cfg(test)]
+        test_main();
 
-    *ALLOCATOR.0.borrow_mut() = Some(heap);
+        exit_qemu(ExitCode::Success);
+    } else {
+        let pmm = pmm::Pmm::new();
+        let heap = Heap::new(pmm);
 
-    shell::run();
+        ALLOCATOR.init(heap);
+
+        shell::run();
+    }
 
     loop {}
 }
 
-pub struct GlobalAllocator(RefCell<Option<Heap>>);
-impl GlobalAllocator {
-    #[inline]
-    const fn empty() -> Self {
-        GlobalAllocator(RefCell::new(None))
-    }
-
-    #[inline]
-    fn get(&self) -> core::cell::RefMut<'_, Heap> {
-        RefMut::map(self.0.borrow_mut(), |mi| {
-            mi.as_mut().expect("Allocator not initialized")
-        })
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ExitCode {
+    Success = 0x5555,
+    Fail = 0x3333,
 }
-unsafe impl GlobalAlloc for GlobalAllocator {
-    #[inline]
-    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        self.get().malloc(layout.size()) as *mut u8
+pub fn exit_qemu(code: ExitCode) -> ! {
+    use core::ptr::write_volatile;
+
+    unsafe {
+        write_volatile(0x100000 as *mut u32, code as u32);
     }
-
-    #[inline]
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        self.get().free(ptr);
-    }
-}
-unsafe impl Send for GlobalAllocator {}
-unsafe impl Sync for GlobalAllocator {}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn trap_handler(machine_cause: u32) {
-    let is_exception = (machine_cause >> 31) & 1 == 0;
-    let cause = machine_cause & 0b01111111111111111111111111111111;
-
-    if is_exception {
-        let cause_str = match cause {
-            0 => "Instruction Address Misaligned",
-            1 => "Instruction Access Fault",
-            2 => "Illegal Instruction",
-            3 => "Breakpoint",
-            4 => "Load Address Misaligned",
-            8 => "Environment Call (U-mode)",
-            11 => "Environment Call (M-mode)",
-            12 => "Instruction Page Fault",
-            15 => "Store Page Fault",
-            _ => "Unknown",
-        };
-        let _ = write!(Uart, "Exception trap called, cause: [{cause}] {cause_str}");
-        todo!("handle exception")
-    } else {
-        let cause_str = match cause {
-            3 => "Machine Software Interrupt",
-            7 => "Machine Timer Interrupt",
-            11 => "Machine External Interrupt",
-            _ => "Unknown",
-        };
-        let _ = write!(Uart, "Interrupt trap called, cause: [{cause}] {cause_str}");
-        todo!("handle interrupt")
+    loop {
+        unsafe {
+            core::arch::asm!("wfi");
+        }
     }
 }
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    writeln!(Uart, "{}", info.message()).unwrap();
-
+    println!("{}", info.message());
     loop {}
+}
+
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Fn()]) {
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
+    }
 }
