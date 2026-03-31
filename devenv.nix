@@ -33,7 +33,6 @@
     cargo build --tests || exit 1
 
     TEST_BIN=$(cargo build --tests --message-format=json | jq -r 'select(.executable != null) | .executable')
-    echo "Use Ctrl-A X to kill"
     qemu-system-riscv64 \
       -machine virt \
       -cpu rv64 \

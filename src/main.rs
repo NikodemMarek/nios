@@ -38,9 +38,9 @@ pub extern "C" fn kernel_main() -> ! {
         ALLOCATOR.init(heap);
 
         shell::run();
-    }
 
-    loop {}
+        loop {}
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,14 +64,22 @@ pub fn exit_qemu(code: ExitCode) -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info.message());
-    loop {}
+    if cfg!(test) {
+        println!("Test failed: {}", info.message());
+
+        exit_qemu(ExitCode::Fail);
+    } else {
+        println!("Kernel panicked: {}", info.message());
+
+        loop {}
+    }
 }
 
 #[cfg(test)]
 pub fn test_runner(tests: &[&dyn Fn()]) {
-    println!("Running {} tests", tests.len());
-    for test in tests {
+    println!("Running {} tests\n", tests.len());
+    for (i, test) in tests.iter().enumerate() {
         test();
+        println!("Test {} passed", i + 1);
     }
 }
