@@ -32,7 +32,7 @@ pub extern "C" fn kernel_main() -> ! {
 
         exit_qemu(ExitCode::Success);
     } else {
-        let pmm = pmm::Pmm::new();
+        let pmm = pmm::Pmm::init();
         let heap = Heap::new(pmm);
 
         ALLOCATOR.init(heap);

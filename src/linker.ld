@@ -31,6 +31,8 @@ SECTIONS {
 
     _kernel_end = .;
 
+    _memory_end = ORIGIN(RAM) + LENGTH(RAM);
+
     /DISCARD/ : {
         *(.eh_frame)
     }
