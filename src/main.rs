@@ -65,7 +65,8 @@ pub fn exit_qemu(code: ExitCode) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     if cfg!(test) {
-        println!("Test failed: {}", info.message());
+        println!("\x1b[31mFAILED\x1b[0m");
+        println!("Error: {}\n", info);
 
         exit_qemu(ExitCode::Fail);
     } else {
@@ -76,10 +77,23 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-pub fn test_runner(tests: &[&dyn Fn()]) {
+pub trait Testable {
+    fn run(&self);
+}
+
+#[cfg(test)]
+impl<T: Fn()> Testable for T {
+    fn run(&self) {
+        print!("test {} ... ", core::any::type_name::<T>());
+        self();
+        println!("\x1b[32mOK\x1b[0m");
+    }
+}
+
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Testable]) {
     println!("Running {} tests", tests.len());
-    for (i, test) in tests.iter().enumerate() {
-        test();
-        println!("Test {} passed", i + 1);
+    for test in tests {
+        test.run();
     }
 }
