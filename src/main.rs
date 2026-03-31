@@ -77,7 +77,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[cfg(test)]
 pub fn test_runner(tests: &[&dyn Fn()]) {
-    println!("Running {} tests\n", tests.len());
+    println!("Running {} tests", tests.len());
     for (i, test) in tests.iter().enumerate() {
         test();
         println!("Test {} passed", i + 1);
