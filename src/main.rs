@@ -8,7 +8,7 @@ extern crate alloc;
 
 mod global_allocator;
 mod heap;
-mod pmm;
+mod memory_manager;
 mod shell;
 mod traps;
 mod uart;
@@ -18,11 +18,12 @@ use core::panic::PanicInfo;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
+use crate::memory_manager::Pmm;
 
 global_asm!(include_str!("main.s"));
 
 #[global_allocator]
-static ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
+static ALLOCATOR: GlobalAllocator<Pmm> = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
@@ -32,7 +33,7 @@ pub extern "C" fn kernel_main() -> ! {
 
         exit_qemu(ExitCode::Success);
     } else {
-        let pmm = pmm::Pmm::init();
+        let pmm = Pmm::init();
         let heap = Heap::new(pmm);
 
         ALLOCATOR.init(heap);

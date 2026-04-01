@@ -1,4 +1,4 @@
-use crate::pmm::{PAGE_SIZE, Pmm};
+use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
 const HEADER_SIZE: usize = 8;
 
@@ -101,18 +101,18 @@ impl Block {
     }
 }
 
-pub struct Heap {
-    pmm: Pmm,
+pub struct Heap<M: MemoryManager> {
+    mm: M,
     allocated_pages: usize,
     pages_ptr: *mut *const u8,
 }
-impl Heap {
-    pub fn new(mut pmm: Pmm) -> Heap {
-        let Some(pages_page_ptr) = pmm.alloc() else {
+impl<M: MemoryManager> Heap<M> {
+    pub fn new(mut mm: M) -> Self {
+        let Some(pages_page_ptr) = mm.alloc() else {
             panic!("PMM run out of free pages");
         };
-        let mut heap = Heap {
-            pmm,
+        let mut heap = Self {
+            mm,
             allocated_pages: 0,
             pages_ptr: pages_page_ptr as *mut *const u8,
         };
@@ -166,13 +166,13 @@ impl Heap {
 
         for i in 0..self.allocated_pages {
             let page_ptr = unsafe { *self.pages_ptr.add(i) };
-            if let Some(page_fit_ptr) = Heap::first_fit(page_ptr, size, align) {
+            if let Some(page_fit_ptr) = Self::first_fit(page_ptr, size, align) {
                 return page_fit_ptr;
             }
         }
 
         let new_page_ptr = self.new_page();
-        Heap::first_fit(new_page_ptr, size, align)
+        Self::first_fit(new_page_ptr, size, align)
             .expect("If block passed the assertion, it has to fit on an empty page")
     }
 
@@ -209,7 +209,7 @@ impl Heap {
     }
 
     fn new_page(&mut self) -> *const u8 {
-        let page_ptr = Heap::request_page(&mut self.pmm);
+        let page_ptr = Heap::request_page(&mut self.mm);
         unsafe {
             let pages_page_ptr = self.pages_ptr.add(self.allocated_pages);
             *pages_page_ptr = page_ptr;
@@ -218,7 +218,7 @@ impl Heap {
         page_ptr
     }
 
-    fn request_page(pmm: &mut Pmm) -> *const u8 {
+    fn request_page(pmm: &mut M) -> *const u8 {
         let Some(page_ptr) = pmm.alloc() else {
             panic!("PMM run out of free pages");
         };
@@ -250,7 +250,7 @@ impl Heap {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::{heap::Heap, pmm::tests::setup_test_pmm};
+    use crate::{heap::Heap, memory_manager::setup_test_pmm};
 
     #[test_case]
     fn test_malloc_and_write() {

@@ -1,12 +1,10 @@
-use core::fmt::Display;
+use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
 unsafe extern "C" {
     static _kernel_start: u8;
     static _kernel_end: u8;
     static _memory_end: u8;
 }
-
-pub const PAGE_SIZE: usize = 4096;
 
 struct Sector(u64);
 impl Sector {
@@ -99,7 +97,7 @@ impl Bitmap {
         }
     }
 }
-impl Display for Bitmap {
+impl core::fmt::Display for Bitmap {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let sectors = self.pages.div_ceil(Sector::capacity());
         for sector_index in 0..sectors {
@@ -149,8 +147,10 @@ impl Pmm {
             ptr: free_memory_ptr,
         }
     }
+}
 
-    pub fn alloc(&mut self) -> Option<*const u8> {
+impl MemoryManager for Pmm {
+    fn alloc(&mut self) -> Option<*const u8> {
         let free_page_index = self.bitmap.free_page_index()?;
 
         self.bitmap.set_page_status(free_page_index, true);
@@ -158,7 +158,7 @@ impl Pmm {
         Some(unsafe { self.ptr.add(free_page_index * PAGE_SIZE) })
     }
 
-    pub fn free(&mut self, page_ptr: *const u8) {
+    fn free(&mut self, page_ptr: *const u8) {
         let page_loc = page_ptr as usize;
         let memory_start_loc = self.ptr as usize;
         let relative_page_offset = page_loc - memory_start_loc;
@@ -169,9 +169,11 @@ impl Pmm {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::pmm::{Bitmap, PAGE_SIZE, Pmm};
+    use crate::memory_manager::MemoryManager;
 
-    pub(crate) fn setup_test_pmm() -> Pmm {
+    use super::{Bitmap, PAGE_SIZE, Pmm};
+
+    pub fn setup_test_pmm() -> Pmm {
         #[repr(align(4096))]
         struct MockMemory([u8; PAGE_SIZE * 4]);
         let mem = MockMemory([0; PAGE_SIZE * 4]);
