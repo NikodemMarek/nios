@@ -30,8 +30,8 @@ unsafe impl GlobalAlloc for GlobalAllocator {
     }
 
     #[inline]
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        self.get().free(ptr, layout.align());
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {
+        self.get().free(ptr);
     }
 }
 unsafe impl Send for GlobalAllocator {}

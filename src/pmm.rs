@@ -171,7 +171,7 @@ impl Pmm {
 pub mod tests {
     use crate::pmm::{Bitmap, PAGE_SIZE, Pmm};
 
-    fn setup_test_pmm() -> Pmm {
+    pub(crate) fn setup_test_pmm() -> Pmm {
         #[repr(align(4096))]
         struct MockMemory([u8; PAGE_SIZE * 4]);
         let mem = MockMemory([0; PAGE_SIZE * 4]);
