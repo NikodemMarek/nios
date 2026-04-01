@@ -3,9 +3,8 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::fmt::Write;
 
-use crate::uart::Uart;
+use crate::{print, println, uart::Uart};
 
 enum Command {
     Echo(String),
@@ -14,21 +13,21 @@ enum Command {
 pub fn run() {
     fn write(buffer: &str) {
         clear_line();
-        write!(Uart, "> {}", buffer).unwrap();
+        print!("> {}", buffer);
     }
 
     loop {
-        write!(Uart, "> ").unwrap();
+        print!("> ");
         let input = read_line(write);
-        writeln!(Uart).unwrap();
+        println!();
 
         let command = parse(&input);
         match command {
             Ok(command) => match command {
-                Command::Echo(message) => writeln!(Uart, "{message}").unwrap(),
+                Command::Echo(message) => println!("{message}"),
             },
             Err(err) => {
-                writeln!(Uart, "{err}").unwrap();
+                println!("{err}");
             }
         }
     }
@@ -70,9 +69,9 @@ fn read_line(write: fn(&str)) -> String {
 }
 
 fn clear_line() {
-    let _ = write!(Uart, "\r");
-    for _ in 0..250 {
-        let _ = write!(Uart, " ");
+    print!("\r");
+    for _ in 0..200 {
+        print!(" ");
     }
-    let _ = write!(Uart, "\r");
+    print!("\r");
 }

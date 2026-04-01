@@ -39,14 +39,14 @@ pub fn _print(args: core::fmt::Arguments) {
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
         $crate::uart::_print(format_args!($($arg)*));
-    };
+    }};
 }
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
         $crate::print!("{}\n", format_args!($($arg)*));
-    };
+    }};
 }
