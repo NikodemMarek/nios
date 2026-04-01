@@ -12,10 +12,10 @@ Goal is to build features incrementally, making sure it just works, improving la
 - [x] Physical Memory Manager
 - [x] Kernel Heap (kmalloc)
 - [x] UART input (poll LSR, read bytes)
-- [ ] Shell
-  - [ ] Line reader (buffered input, backspace handling)
-  - [ ] Command parser (tokenize input)
-  - [ ] Built-in commands
+- [x] Shell
+  - [x] Line reader (buffered input, backspace handling)
+  - [x] Command parser (tokenize input)
+  - [x] Built-in commands
 - [ ] Virtual Memory and Paging (optional)
 - [ ] Multitasking and Context Switching (optional)
 
