@@ -8,6 +8,7 @@ use crate::{print, println, uart::Uart};
 
 enum Command {
     Echo(String),
+    Exit,
 }
 
 pub fn run() {
@@ -25,6 +26,10 @@ pub fn run() {
         match command {
             Ok(command) => match command {
                 Command::Echo(message) => println!("{message}"),
+                Command::Exit => {
+                    println!("exiting shell");
+                    break;
+                }
             },
             Err(err) => {
                 println!("{err}");
@@ -40,6 +45,7 @@ fn parse(input: &str) -> Result<Command, String> {
             let message = parts.collect::<Vec<_>>().join(" ");
             Ok(Command::Echo(message))
         }
+        Some("ex") => Ok(Command::Exit),
         Some(command) => Err(format!("Unknown command: {command}")),
         None => Err("No command provided".to_string()),
     }
