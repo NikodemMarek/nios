@@ -3,6 +3,7 @@ use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 unsafe extern "C" {
     static _kernel_start: u8;
     static _kernel_end: u8;
+    static _memory_start: u8;
     static _memory_end: u8;
 }
 
@@ -25,23 +26,24 @@ impl Sector {
 
 struct Bitmap {
     ptr: *mut u64,
-    pages: usize,
+    total_pages: usize,
 }
 impl Bitmap {
-    fn new(ptr: *mut u8, pages: usize) -> Self {
+    fn new(ptr: *mut u8, preoccupied_pages: usize, total_pages: usize) -> Self {
         let ptr = ptr as *mut u64;
 
         // Reserve the pages needed to store the bitmap itself.
         let bits_on_page = PAGE_SIZE * 8;
-        let pages_occupied_by_bitmap = pages.div_ceil(bits_on_page);
-        let bitmap_fully_occupied_sectors = pages_occupied_by_bitmap / Sector::capacity();
+        let bitmap_occupied_pages = total_pages.div_ceil(bits_on_page);
+        let total_occupied_pages = preoccupied_pages + bitmap_occupied_pages;
+        let bitmap_fully_occupied_sectors = total_occupied_pages / Sector::capacity();
         for i in 0..bitmap_fully_occupied_sectors {
             unsafe {
                 let sector_ptr = ptr.add(i);
                 *sector_ptr = !0;
             };
         }
-        let leftover_bits = pages_occupied_by_bitmap % Sector::capacity();
+        let leftover_bits = total_occupied_pages % Sector::capacity();
         if leftover_bits != 0 {
             let mut sector_mask = 0;
             for _ in 0..leftover_bits {
@@ -53,7 +55,7 @@ impl Bitmap {
             };
         }
 
-        Self { ptr, pages }
+        Self { ptr, total_pages }
     }
 
     fn sector(&self, n: usize) -> Sector {
@@ -63,7 +65,7 @@ impl Bitmap {
     }
 
     fn free_sector_index(&self) -> Option<usize> {
-        let sectors = self.pages.div_ceil(Sector::capacity());
+        let sectors = self.total_pages.div_ceil(Sector::capacity());
         for sector_index in 0..sectors {
             let sector = self.sector(sector_index);
             if !sector.is_full() {
@@ -79,11 +81,14 @@ impl Bitmap {
         let sector_free_page_index = sector.free_page_index()?;
 
         let page_index = (free_sector_index * Sector::capacity()) + sector_free_page_index;
-        (page_index < self.pages).then_some(page_index)
+        (page_index < self.total_pages).then_some(page_index)
     }
 
     fn set_page_status(&self, index: usize, is_occupied: bool) {
-        assert!(index <= self.pages, "Cannot modify nonexistent page status");
+        assert!(
+            index <= self.total_pages,
+            "Cannot modify nonexistent page status"
+        );
 
         let n = index / Sector::capacity();
         let i = index % Sector::capacity();
@@ -99,26 +104,16 @@ impl Bitmap {
 }
 impl core::fmt::Display for Bitmap {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let sectors = self.pages.div_ceil(Sector::capacity());
+        let sectors = self.total_pages.div_ceil(Sector::capacity());
         for sector_index in 0..sectors {
             let sector = self.sector(sector_index);
             writeln!(f, "{:064b}", sector.0)?;
         }
-        writeln!(f, "{} pages", self.pages)?;
+        writeln!(f, "{} pages", self.total_pages)?;
         writeln!(f, "{sectors} sectors")?;
 
         Ok(())
     }
-}
-
-fn calculate_free_memory() -> (*const u8, usize) {
-    let kernel_end_ptr = unsafe { &_kernel_end } as *const u8;
-    let memory_end_ptr = unsafe { &_memory_end } as *const u8;
-
-    let free_memory_start_ptr = unsafe { kernel_end_ptr.add(1) };
-    let free_memory_size = unsafe { memory_end_ptr.offset_from(kernel_end_ptr) as usize } + 1;
-
-    (free_memory_start_ptr, free_memory_size)
 }
 
 pub struct Pmm {
@@ -127,24 +122,26 @@ pub struct Pmm {
 }
 impl Pmm {
     pub fn init() -> Self {
-        let (free_memory_start_ptr, memory_size) = calculate_free_memory();
+        let kernel_end_ptr = unsafe { &_kernel_end } as *const u8;
+        let kernel_end_loc = kernel_end_ptr as usize;
 
-        let free_memory_start_loc = free_memory_start_ptr as usize;
-        let free_memory_start_aligned_loc =
-            (free_memory_start_loc + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-        let free_memory_start_aligned_ptr = free_memory_start_aligned_loc as *const u8;
+        let page_after_kernel_loc = (kernel_end_loc + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
-        let free_memory_alignment_offset = free_memory_start_aligned_loc - free_memory_start_loc;
-        let effective_memory_size = memory_size - free_memory_alignment_offset;
+        let memory_start_ptr = unsafe { &_memory_start } as *const u8;
+        let memory_end_ptr = unsafe { &_memory_end } as *const u8;
+        let memory_size = unsafe { memory_end_ptr.offset_from(memory_start_ptr) as usize } + 1;
 
-        Self::new(free_memory_start_aligned_ptr, effective_memory_size)
-    }
+        let occupied_memory_size =
+            unsafe { kernel_end_ptr.offset_from(memory_start_ptr) as usize } + 1;
+        let occupied_pages = occupied_memory_size.div_ceil(PAGE_SIZE);
 
-    fn new(free_memory_ptr: *const u8, free_memory_size: usize) -> Self {
-        let free_pages = free_memory_size / PAGE_SIZE;
+        let bitmap_start_loc = page_after_kernel_loc;
+        let total_pages = memory_size / PAGE_SIZE;
+        let bitmap = Bitmap::new(bitmap_start_loc as *mut u8, occupied_pages, total_pages);
+
         Self {
-            bitmap: Bitmap::new(free_memory_ptr as *mut u8, free_pages),
-            ptr: free_memory_ptr,
+            bitmap,
+            ptr: memory_start_ptr,
         }
     }
 }
@@ -181,7 +178,7 @@ pub mod tests {
         let mut bitmap = [0u64; 1];
         let bitmap_ptr = bitmap.as_mut_ptr();
         Pmm {
-            bitmap: Bitmap::new(bitmap_ptr as *mut u8, 4),
+            bitmap: Bitmap::new(bitmap_ptr as *mut u8, 0, 4),
             ptr: mem.0.as_ptr(),
         }
     }

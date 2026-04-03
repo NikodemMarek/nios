@@ -8,6 +8,8 @@ MEMORY {
 SECTIONS {
     . = 0x80000000;
 
+    _memory_start = ORIGIN(RAM);
+
     _kernel_start = .;
 
     .text : {
