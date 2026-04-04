@@ -1,7 +1,7 @@
 use crate::println;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_handler(cause: u64) {
+pub extern "C" fn trap_handler(cause: u64, value: u64) {
     let is_exception = (cause >> 63) & 1 == 0;
     let cause_code = cause & 0x7fffffffffffffff;
 
@@ -23,7 +23,9 @@ pub extern "C" fn trap_handler(cause: u64) {
             15 => "Store Page Fault",
             _ => "Unknown",
         };
-        println!("Exception trap called, cause: [{cause_code}] {cause_str}");
+        println!(
+            "Exception trap called, cause: [{cause_code}] {cause_str} with value: {value:#064b}"
+        );
         todo!("handle exception")
     } else {
         let cause_str = match cause_code {

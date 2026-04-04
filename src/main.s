@@ -74,6 +74,7 @@ trap_entry:
 
     // move the machine cause to function argument, and call the trap handler
     csrr x10, scause
+    csrr x11, stval
     call trap_handler
 
     // restore registers
