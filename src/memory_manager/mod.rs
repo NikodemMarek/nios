@@ -3,7 +3,7 @@ mod pte;
 mod vmm;
 
 pub use pmm::Pmm;
-pub use pte::{Pte, PteAttributes};
+pub use pte::{PageTableEntry, PageTableEntryAttributes};
 pub use vmm::Vmm;
 
 unsafe extern "C" {

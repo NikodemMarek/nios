@@ -19,7 +19,9 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{MemoryManager, Pmm, Pte, PteAttributes, Vmm, satp};
+use crate::memory_manager::{
+    MemoryManager, PageTableEntry, PageTableEntryAttributes, Pmm, Vmm, satp,
+};
 
 global_asm!(include_str!("main.s"));
 
@@ -59,14 +61,14 @@ pub fn enable_virtual_memory(mut pmm: Pmm) {
     let high_half_slot = loc_to_slot(virt_base_loc);
     let uart_slot = loc_to_slot(0x00000000);
 
-    let pte_attrs = PteAttributes::default()
+    let pte_attrs = PageTableEntryAttributes::default()
         .dirty()
         .accessed()
         .execute()
         .write()
         .read();
-    let kernel_pte = Pte::new(phys_base_loc as *const (), pte_attrs).0;
-    let uart_pte = Pte::new(0x00000000 as *const (), pte_attrs).0;
+    let kernel_pte = PageTableEntry::new(phys_base_loc as *const (), pte_attrs).0;
+    let uart_pte = PageTableEntry::new(0x00000000 as *const (), pte_attrs).0;
 
     unsafe {
         let identity_slot_ptr = phys_root_ptr.add(identity_slot);

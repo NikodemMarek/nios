@@ -1,6 +1,6 @@
-pub struct Pte(pub u64);
-impl Pte {
-    pub fn new(page_ptr: *const (), attributes: PteAttributes) -> Self {
+pub struct PageTableEntry(pub u64);
+impl PageTableEntry {
+    pub fn new(page_ptr: *const (), attributes: PageTableEntryAttributes) -> Self {
         let reserved = 0b0;
         let ppn = Self::pnn(page_ptr);
         let rsw = 0b00 << 8;
@@ -19,8 +19,8 @@ impl Pte {
 }
 
 #[derive(Copy, Clone)]
-pub struct PteAttributes(u8);
-impl PteAttributes {
+pub struct PageTableEntryAttributes(u8);
+impl PageTableEntryAttributes {
     pub fn dirty(mut self) -> Self {
         self.0 |= 0b1 << 7;
         self
@@ -50,7 +50,7 @@ impl PteAttributes {
         self
     }
 }
-impl Default for PteAttributes {
+impl Default for PageTableEntryAttributes {
     fn default() -> Self {
         // always valid
         Self(0b1)
