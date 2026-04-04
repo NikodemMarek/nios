@@ -109,7 +109,7 @@ pub struct Heap<M: MemoryManager> {
 impl<M: MemoryManager> Heap<M> {
     pub fn new(mut mm: M) -> Self {
         let Some(pages_page_ptr) = mm.alloc() else {
-            panic!("PMM run out of free pages");
+            panic!("MM run out of free pages");
         };
         let mut heap = Self {
             mm,

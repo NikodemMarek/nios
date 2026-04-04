@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
-#![test_runner(crate::test_runner)]
+#![test_runner(test::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
@@ -9,16 +9,16 @@ extern crate alloc;
 mod global_allocator;
 mod heap;
 mod memory_manager;
+mod panic;
+mod qemu;
 mod shell;
 mod traps;
 mod uart;
 
 use core::arch::global_asm;
-use core::panic::PanicInfo;
 
 use crate::global_allocator::GlobalAllocator;
-use crate::heap::Heap;
-use crate::memory_manager::Pmm;
+use crate::memory_manager::{MemoryManager, Pmm, Pte, PteAttributes, satp};
 
 global_asm!(include_str!("main.s"));
 
@@ -26,75 +26,83 @@ global_asm!(include_str!("main.s"));
 static ALLOCATOR: GlobalAllocator<Pmm> = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kernel_main() -> ! {
+pub extern "C" fn kernel_main() {
     if cfg!(test) {
         #[cfg(test)]
         test_main();
 
-        exit_qemu(ExitCode::Success);
+        qemu::exit(qemu::ExitCode::Success);
     } else {
-        let pmm = Pmm::init();
-        let heap = Heap::new(pmm);
-
-        ALLOCATOR.init(heap);
-
-        shell::run();
-
-        loop {}
+        // runs at physical address, before MMU
+        let mut pmm = Pmm::init();
+        enable_virtual_memory(&mut pmm); // noreturn, jumps to kernel_main_virtual
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum ExitCode {
-    Success = 0x5555,
-    Fail = 0x3333,
+unsafe extern "C" {
+    static PHYS_BASE: u8;
+    static VIRT_BASE: u8;
 }
-pub fn exit_qemu(code: ExitCode) -> ! {
-    use core::ptr::write_volatile;
+
+#[unsafe(link_section = ".text.boot")]
+pub fn enable_virtual_memory(pmm: &mut Pmm) {
+    let phys_base_loc = unsafe { &PHYS_BASE as *const u8 as usize };
+    // this does not work in code-model=medium
+    // let virt_base = unsafe { &VIRT_BASE as *const u8 as usize };
+    // so i just hardcode the same value here
+    let virt_base_loc: usize = 0xffffffff80000000;
+
+    let phys_root_ptr = pmm.alloc().expect("PMM out of pages") as *mut u64;
+
+    const fn loc_to_slot(loc: usize) -> usize {
+        (loc >> 30) & 0b111111111
+    }
+    let identity_slot = loc_to_slot(phys_base_loc);
+    let high_half_slot = loc_to_slot(virt_base_loc);
+    let uart_slot = loc_to_slot(0x00000000);
+
+    let pty_attrs = PteAttributes::default()
+        .dirty()
+        .accessed()
+        .execute()
+        .write()
+        .read();
+    let kernel_pte = Pte::new(phys_base_loc as *const (), pty_attrs).0;
+    let uart_pte = Pte::new(0x00000000 as *const (), pty_attrs).0;
+
+    let identity_slot_ptr = unsafe { phys_root_ptr.add(identity_slot) };
+    let high_half_slot_ptr = unsafe { phys_root_ptr.add(high_half_slot) };
+    let uart_slot_ptr = unsafe { phys_root_ptr.add(uart_slot) };
+    unsafe {
+        *identity_slot_ptr = kernel_pte;
+        *high_half_slot_ptr = kernel_pte;
+        *uart_slot_ptr = uart_pte;
+    }
+
+    let satp_val = satp(phys_root_ptr as *mut ());
+
+    let phys_entry = kernel_main_virtual as *const () as usize;
+    let virt_entry = (phys_entry - phys_base_loc + virt_base_loc) as *const ();
 
     unsafe {
-        write_volatile(0x100000 as *mut u32, code as u32);
-    }
-    loop {
-        unsafe {
-            core::arch::asm!("wfi");
-        }
+        core::arch::asm!(
+            "csrw satp, {satp_val}",
+            "sfence.vma zero, zero",
+            "jr {v_addr}",
+            satp_val = in(reg) satp_val,
+            v_addr = in(reg) virt_entry,
+            options(noreturn)
+        );
     }
 }
 
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    if cfg!(test) {
-        println!("\x1b[31mFAILED\x1b[0m");
-        println!("Error: {}\n", info);
-
-        exit_qemu(ExitCode::Fail);
-    } else {
-        println!("Kernel panicked: {}", info.message());
-
-        loop {}
-    }
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text")]
+pub extern "C" fn kernel_main_virtual() -> ! {
+    // runs at virtual address, after MMU is on
+    println!("virtual memory enabled");
+    loop {}
 }
 
 #[cfg(test)]
-pub trait Testable {
-    fn run(&self);
-}
-
-#[cfg(test)]
-impl<T: Fn()> Testable for T {
-    fn run(&self) {
-        print!("test {} ... ", core::any::type_name::<T>());
-        self();
-        println!("\x1b[32mOK\x1b[0m");
-    }
-}
-
-#[cfg(test)]
-pub fn test_runner(tests: &[&dyn Testable]) {
-    println!("Running {} tests", tests.len());
-    for test in tests {
-        test.run();
-    }
-}
+mod test;

@@ -1,12 +1,5 @@
 use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
-unsafe extern "C" {
-    static _kernel_start: u8;
-    static _kernel_end: u8;
-    static _memory_start: u8;
-    static _memory_end: u8;
-}
-
 struct Sector(u64);
 impl Sector {
     const fn capacity() -> usize {
@@ -122,13 +115,13 @@ pub struct Pmm {
 }
 impl Pmm {
     pub fn init() -> Self {
-        let kernel_end_ptr = unsafe { &_kernel_end } as *const u8;
+        let kernel_end_ptr = unsafe { &super::_kernel_end } as *const u8;
         let kernel_end_loc = kernel_end_ptr as usize;
 
         let page_after_kernel_loc = (kernel_end_loc + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
-        let memory_start_ptr = unsafe { &_memory_start } as *const u8;
-        let memory_end_ptr = unsafe { &_memory_end } as *const u8;
+        let memory_start_ptr = unsafe { &super::_memory_start } as *const u8;
+        let memory_end_ptr = unsafe { &super::_memory_end } as *const u8;
         let memory_size = unsafe { memory_end_ptr.offset_from(memory_start_ptr) as usize } + 1;
 
         let occupied_memory_size =
