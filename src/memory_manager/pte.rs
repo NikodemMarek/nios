@@ -12,25 +12,9 @@ impl Pte {
         (page_ptr as u64 >> 12) << 10
     }
 
-    fn attributes(
-        dirty: bool,
-        accessed: bool,
-        global: bool,
-        user: bool,
-        execute: bool,
-        write: bool,
-        read: bool,
-    ) -> u8 {
-        let f = |c| if c { 0b1 } else { 0b0 };
-
-        // Always valid
-        0b1 | (f(dirty) << 7)
-            | (f(accessed) << 6)
-            | (f(global) << 5)
-            | (f(user) << 4)
-            | (f(execute) << 3)
-            | (f(write) << 2)
-            | (f(read) << 1)
+    pub fn page_ptr(&self) -> *const () {
+        let page_loc = (self.0 >> 10) << 12;
+        page_loc as *const ()
     }
 }
 
@@ -68,6 +52,7 @@ impl PteAttributes {
 }
 impl Default for PteAttributes {
     fn default() -> Self {
+        // always valid
         Self(0b1)
     }
 }

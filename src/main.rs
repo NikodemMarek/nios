@@ -19,7 +19,7 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{MemoryManager, Pmm, Pte, PteAttributes, satp};
+use crate::memory_manager::{MemoryManager, Pmm, Pte, PteAttributes, Vmm, satp};
 
 global_asm!(include_str!("main.s"));
 
@@ -59,19 +59,19 @@ pub fn enable_virtual_memory(mut pmm: Pmm) {
     let high_half_slot = loc_to_slot(virt_base_loc);
     let uart_slot = loc_to_slot(0x00000000);
 
-    let pty_attrs = PteAttributes::default()
+    let pte_attrs = PteAttributes::default()
         .dirty()
         .accessed()
         .execute()
         .write()
         .read();
-    let kernel_pte = Pte::new(phys_base_loc as *const (), pty_attrs).0;
-    let uart_pte = Pte::new(0x00000000 as *const (), pty_attrs).0;
+    let kernel_pte = Pte::new(phys_base_loc as *const (), pte_attrs).0;
+    let uart_pte = Pte::new(0x00000000 as *const (), pte_attrs).0;
 
-    let identity_slot_ptr = unsafe { phys_root_ptr.add(identity_slot) };
-    let high_half_slot_ptr = unsafe { phys_root_ptr.add(high_half_slot) };
-    let uart_slot_ptr = unsafe { phys_root_ptr.add(uart_slot) };
     unsafe {
+        let identity_slot_ptr = phys_root_ptr.add(identity_slot);
+        let high_half_slot_ptr = phys_root_ptr.add(high_half_slot);
+        let uart_slot_ptr = phys_root_ptr.add(uart_slot);
         *identity_slot_ptr = kernel_pte;
         *high_half_slot_ptr = kernel_pte;
         *uart_slot_ptr = uart_pte;
@@ -79,7 +79,8 @@ pub fn enable_virtual_memory(mut pmm: Pmm) {
 
     let satp_val = satp(phys_root_ptr as *mut ());
 
-    let pmm_ptr = &pmm as *const Pmm;
+    let vmm = Vmm::init(pmm, phys_root_ptr as *const ());
+    let vmm_ptr = &vmm as *const Vmm;
 
     let phys_entry = kernel_main_virtual as *const () as usize;
     let virt_entry = (phys_entry - phys_base_loc + virt_base_loc) as *const ();
@@ -88,10 +89,10 @@ pub fn enable_virtual_memory(mut pmm: Pmm) {
         core::arch::asm!(
             "csrw satp, {satp_val}",
             "sfence.vma zero, zero",
-            "mv t5, {pmm_ptr}",
+            "mv t5, {mm_ptr}",
             "jr {v_addr}",
             satp_val = in(reg) satp_val,
-            pmm_ptr = in(reg) pmm_ptr,
+            mm_ptr = in(reg) vmm_ptr,
             v_addr = in(reg) virt_entry,
             options(noreturn)
         );
@@ -99,7 +100,7 @@ pub fn enable_virtual_memory(mut pmm: Pmm) {
 }
 
 #[global_allocator]
-static ALLOCATOR: GlobalAllocator<Pmm> = GlobalAllocator::empty();
+static ALLOCATOR: GlobalAllocator<Vmm> = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]
@@ -107,13 +108,13 @@ pub extern "C" fn kernel_main_virtual() -> ! {
     // runs at virtual address, after MMU is on
     println!("virtual memory enabled");
 
-    let pmm_ptr: *const Pmm;
+    let vmm_ptr: *const Vmm;
     unsafe {
-        core::arch::asm!("mv {pmm_ptr}, t5", pmm_ptr = out(reg) pmm_ptr);
+        core::arch::asm!("mv {mm_ptr}, t5", mm_ptr = out(reg) vmm_ptr);
     }
-    let pmm = unsafe { *pmm_ptr } as Pmm;
+    let vmm = unsafe { *vmm_ptr } as Vmm;
 
-    let heap = Heap::new(pmm);
+    let heap = Heap::new(vmm);
     ALLOCATOR.init(heap);
 
     shell::run();

@@ -4,6 +4,7 @@ mod vmm;
 
 pub use pmm::Pmm;
 pub use pte::{Pte, PteAttributes};
+pub use vmm::Vmm;
 
 unsafe extern "C" {
     static _kernel_start: u8;
