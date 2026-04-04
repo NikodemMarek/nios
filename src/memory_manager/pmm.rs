@@ -17,6 +17,7 @@ impl Sector {
     }
 }
 
+#[derive(Copy, Clone)]
 struct Bitmap {
     ptr: *mut u64,
     total_pages: usize,
@@ -109,6 +110,7 @@ impl core::fmt::Display for Bitmap {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Pmm {
     ptr: *const u8,
     bitmap: Bitmap,

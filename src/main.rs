@@ -18,12 +18,15 @@ mod uart;
 use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
+use crate::heap::Heap;
 use crate::memory_manager::{MemoryManager, Pmm, Pte, PteAttributes, satp};
 
 global_asm!(include_str!("main.s"));
 
-#[global_allocator]
-static ALLOCATOR: GlobalAllocator<Pmm> = GlobalAllocator::empty();
+unsafe extern "C" {
+    static PHYS_BASE: u8;
+    static VIRT_BASE: u8;
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() {
@@ -35,17 +38,12 @@ pub extern "C" fn kernel_main() {
     } else {
         // runs at physical address, before MMU
         let mut pmm = Pmm::init();
-        enable_virtual_memory(&mut pmm); // noreturn, jumps to kernel_main_virtual
+        enable_virtual_memory(pmm); // noreturn, jumps to kernel_main_virtual
     }
 }
 
-unsafe extern "C" {
-    static PHYS_BASE: u8;
-    static VIRT_BASE: u8;
-}
-
 #[unsafe(link_section = ".text.boot")]
-pub fn enable_virtual_memory(pmm: &mut Pmm) {
+pub fn enable_virtual_memory(mut pmm: Pmm) {
     let phys_base_loc = unsafe { &PHYS_BASE as *const u8 as usize };
     // this does not work in code-model=medium
     // let virt_base = unsafe { &VIRT_BASE as *const u8 as usize };
@@ -81,6 +79,8 @@ pub fn enable_virtual_memory(pmm: &mut Pmm) {
 
     let satp_val = satp(phys_root_ptr as *mut ());
 
+    let pmm_ptr = &pmm as *const Pmm;
+
     let phys_entry = kernel_main_virtual as *const () as usize;
     let virt_entry = (phys_entry - phys_base_loc + virt_base_loc) as *const ();
 
@@ -88,19 +88,36 @@ pub fn enable_virtual_memory(pmm: &mut Pmm) {
         core::arch::asm!(
             "csrw satp, {satp_val}",
             "sfence.vma zero, zero",
+            "mv t5, {pmm_ptr}",
             "jr {v_addr}",
             satp_val = in(reg) satp_val,
+            pmm_ptr = in(reg) pmm_ptr,
             v_addr = in(reg) virt_entry,
             options(noreturn)
         );
     }
 }
 
+#[global_allocator]
+static ALLOCATOR: GlobalAllocator<Pmm> = GlobalAllocator::empty();
+
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]
 pub extern "C" fn kernel_main_virtual() -> ! {
     // runs at virtual address, after MMU is on
     println!("virtual memory enabled");
+
+    let pmm_ptr: *const Pmm;
+    unsafe {
+        core::arch::asm!("mv {pmm_ptr}, t5", pmm_ptr = out(reg) pmm_ptr);
+    }
+    let pmm = unsafe { *pmm_ptr } as Pmm;
+
+    let heap = Heap::new(pmm);
+    ALLOCATOR.init(heap);
+
+    shell::run();
+
     loop {}
 }
 
