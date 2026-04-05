@@ -1,4 +1,4 @@
-use crate::memory_manager::{MemoryManager, PageTableEntry, Pmm};
+use crate::memory_manager::{MemoryManager, Pmm, page_table_entry::PageTableEntry};
 
 #[derive(Copy, Clone)]
 pub struct PageTableLevelRoot;
@@ -146,6 +146,9 @@ impl<L> core::fmt::Display for PageTable<L> {
     }
 }
 
+const fn loc_to_slot(loc: usize) -> usize {
+    (loc >> 30) & 0b111111111
+}
 pub fn init(
     pmm: &mut Pmm,
     phys_base_loc: usize,
@@ -154,19 +157,20 @@ pub fn init(
     let root_page_table_ptr = pmm.alloc().expect("PMM out of pages");
     let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
 
-    const fn loc_to_slot(loc: usize) -> usize {
-        (loc >> 30) & 0b111111111
-    }
-
     let identity_slot = loc_to_slot(phys_base_loc);
     let high_half_slot = loc_to_slot(virt_base_loc);
     let kernel_pte = PageTableEntry::leaf(phys_base_loc as *const ());
     root_page_table.set_pte(identity_slot, kernel_pte);
     root_page_table.set_pte(high_half_slot, kernel_pte);
 
-    let uart_slot = loc_to_slot(0x00000000);
+    let uart_slot = loc_to_slot(0xffffffff10000000);
     let uart_pte = PageTableEntry::leaf(0x00000000 as *const ());
     root_page_table.set_pte(uart_slot, uart_pte);
+
+    // pre-locate the first pte, to avoid null-pointer dereference
+    let empty_slot = loc_to_slot(0x00000000);
+    let empty_pte = PageTableEntry::leaf(0x00000000 as *const ());
+    root_page_table.set_pte(empty_slot, empty_pte);
 
     root_page_table
 }

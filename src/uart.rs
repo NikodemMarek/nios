@@ -2,7 +2,7 @@ use core::fmt::Write;
 
 pub struct Uart;
 impl Uart {
-    const ADDRESS: *mut u8 = 0x10000000 as *mut u8;
+    const ADDRESS: *mut u8 = 0xffffffff10000000 as *mut u8;
 
     fn print(s: &str) {
         for c in s.bytes() {
