@@ -8,6 +8,10 @@ impl PageTableEntry {
         Self(reserved | ppn | rsw | attributes)
     }
 
+    pub fn from_ptr(ptr: *const u64) -> Self {
+        PageTableEntry(if ptr.is_null() { 0b0 } else { unsafe { *ptr } })
+    }
+
     fn pnn(page_ptr: *const ()) -> u64 {
         (page_ptr as u64 >> 12) << 10
     }
@@ -15,6 +19,19 @@ impl PageTableEntry {
     pub fn page_ptr(&self) -> *const () {
         let page_loc = (self.0 >> 10) << 12;
         page_loc as *const ()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        (self.0 & 0b1) == 0b1
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        ((self.0 & 0b1110) >> 1) != 0
+    }
+}
+impl core::fmt::Display for PageTableEntry {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:064b}", self.0)
     }
 }
 

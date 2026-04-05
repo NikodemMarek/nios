@@ -1,9 +1,10 @@
+mod page_table;
+mod page_table_entry;
 mod pmm;
-mod pte;
 mod vmm;
 
+pub use page_table_entry::{PageTableEntry, PageTableEntryAttributes};
 pub use pmm::Pmm;
-pub use pte::{PageTableEntry, PageTableEntryAttributes};
 pub use vmm::Vmm;
 
 unsafe extern "C" {
