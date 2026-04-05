@@ -1,4 +1,4 @@
-use crate::memory_manager::{MemoryManager, PageTableEntry, PageTableEntryAttributes, Pmm};
+use crate::memory_manager::{MemoryManager, PageTableEntry, Pmm};
 
 #[derive(Copy, Clone)]
 pub struct PageTableLevelRoot;
@@ -24,26 +24,39 @@ impl<L> PageTable<L> {
         assert!(i < 512, "page table entry index {i} too high");
         PageTableEntry::from_ptr(unsafe { (self.ptr as *const u64).add(i) })
     }
+    fn set_pte(&mut self, index: usize, pte: PageTableEntry) {
+        unsafe {
+            let page_pte_ptr = (self.ptr as *mut u64).add(index);
+            *page_pte_ptr = pte.0;
+        }
+    }
+
     fn get_ptes(&self) -> impl Iterator<Item = PageTableEntry> {
         (0..512).map(|i| self.get_pte(i))
     }
+    fn free_index(&self) -> Option<usize> {
+        self.get_ptes()
+            .enumerate()
+            .find_map(|(i, pte)| (!pte.is_valid()).then_some(i))
+    }
 
     fn add_page_table(&mut self, pmm: &mut Pmm) -> Option<usize> {
+        let free_index = self.free_index()?;
+
         let page_table_ptr = pmm.alloc().expect("PMM out of pages");
+        let page_table_pte = PageTableEntry::page_table(page_table_ptr as *const ());
 
-        let page_table_pte = PageTableEntry::new(
-            page_table_ptr as *const (),
-            PageTableEntryAttributes::default(),
-        );
-        let free_index = self
-            .get_ptes()
-            .enumerate()
-            .find_map(|(i, pte)| (!pte.is_valid()).then_some(i))?;
+        self.set_pte(free_index, page_table_pte);
 
-        unsafe {
-            let page_table_pte_ptr = (self.ptr as *mut u64).add(free_index);
-            *page_table_pte_ptr = page_table_pte.0;
-        }
+        Some(free_index)
+    }
+    fn add_leaf_page(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
+        let free_index = self.free_index()?;
+
+        let leaf_page_ptr = pmm.alloc().expect("PMM out of pages");
+        let leaf_page_pte = PageTableEntry::leaf(leaf_page_ptr as *const ());
+
+        self.set_pte(free_index, leaf_page_pte);
 
         Some(free_index)
     }
@@ -54,6 +67,11 @@ impl PageTable<PageTableLevelRoot> {
             ptr,
             level: core::marker::PhantomData::<PageTableLevelRoot>,
         }
+    }
+
+    pub fn satp(&self) -> u64 {
+        let ppn = (self.ptr as u64) >> 12;
+        (0b1000u64 << 60) | ppn
     }
 
     pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<(usize, usize, usize)> {
@@ -119,32 +137,36 @@ impl PageTable<PageTableLevelL1> {
 }
 impl PageTable<PageTableLevelL0> {
     fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
-        let free_index = self
-            .get_ptes()
-            .enumerate()
-            .find_map(|(i, pte)| (!pte.is_valid()).then_some(i))?;
-
-        let new_page_ptr = pmm.alloc().expect("PMM out of pages");
-        let new_page_pte = PageTableEntry::new(
-            new_page_ptr as *const (),
-            PageTableEntryAttributes::default()
-                .dirty()
-                .accessed()
-                .execute()
-                .write()
-                .read(),
-        );
-
-        unsafe {
-            let new_page_pte_ptr = (self.ptr as *mut u64).add(free_index);
-            *new_page_pte_ptr = new_page_pte.0;
-        }
-
-        Some(free_index)
+        self.add_leaf_page(pmm)
     }
 }
 impl<L> core::fmt::Display for PageTable<L> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.get_ptes().try_for_each(|pte| writeln!(f, "{}", pte))
     }
+}
+
+pub fn init(
+    pmm: &mut Pmm,
+    phys_base_loc: usize,
+    virt_base_loc: usize,
+) -> PageTable<PageTableLevelRoot> {
+    let root_page_table_ptr = pmm.alloc().expect("PMM out of pages");
+    let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+
+    const fn loc_to_slot(loc: usize) -> usize {
+        (loc >> 30) & 0b111111111
+    }
+
+    let identity_slot = loc_to_slot(phys_base_loc);
+    let high_half_slot = loc_to_slot(virt_base_loc);
+    let kernel_pte = PageTableEntry::leaf(phys_base_loc as *const ());
+    root_page_table.set_pte(identity_slot, kernel_pte);
+    root_page_table.set_pte(high_half_slot, kernel_pte);
+
+    let uart_slot = loc_to_slot(0x00000000);
+    let uart_pte = PageTableEntry::leaf(0x00000000 as *const ());
+    root_page_table.set_pte(uart_slot, uart_pte);
+
+    root_page_table
 }

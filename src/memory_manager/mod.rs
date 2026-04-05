@@ -3,7 +3,8 @@ mod page_table_entry;
 mod pmm;
 mod vmm;
 
-pub use page_table_entry::{PageTableEntry, PageTableEntryAttributes};
+pub use page_table::init as init_page_table;
+pub use page_table_entry::PageTableEntry;
 pub use pmm::Pmm;
 pub use vmm::Vmm;
 
@@ -19,11 +20,6 @@ pub const PAGE_SIZE: usize = 4096;
 pub trait MemoryManager {
     fn alloc(&mut self) -> Option<*const u8>;
     fn free(&mut self, page_ptr: *const u8);
-}
-
-pub fn satp(root_page_ptr: *const ()) -> u64 {
-    let ppn = (root_page_ptr as u64) >> 12;
-    (0b1000u64 << 60) | ppn
 }
 
 #[cfg(test)]

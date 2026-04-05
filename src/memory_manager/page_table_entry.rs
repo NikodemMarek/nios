@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub struct PageTableEntry(pub u64);
 impl PageTableEntry {
     pub fn new(page_ptr: *const (), attributes: PageTableEntryAttributes) -> Self {
@@ -6,6 +7,12 @@ impl PageTableEntry {
         let rsw = 0b00 << 8;
         let attributes = attributes.0 as u64;
         Self(reserved | ppn | rsw | attributes)
+    }
+    pub fn page_table(page_ptr: *const ()) -> Self {
+        Self::new(page_ptr, PageTableEntryAttributes::page_table())
+    }
+    pub fn leaf(page_ptr: *const ()) -> Self {
+        Self::new(page_ptr, PageTableEntryAttributes::leaf())
     }
 
     pub fn from_ptr(ptr: *const u64) -> Self {
@@ -38,6 +45,13 @@ impl core::fmt::Display for PageTableEntry {
 #[derive(Copy, Clone)]
 pub struct PageTableEntryAttributes(u8);
 impl PageTableEntryAttributes {
+    fn page_table() -> Self {
+        Self::default()
+    }
+    fn leaf() -> Self {
+        Self::default().dirty().accessed().execute().write().read()
+    }
+
     pub fn dirty(mut self) -> Self {
         self.0 |= 0b1 << 7;
         self

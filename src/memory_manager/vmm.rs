@@ -7,8 +7,7 @@ pub struct Vmm {
 }
 
 impl Vmm {
-    pub fn init(pmm: Pmm, root_page_ptr: *const ()) -> Self {
-        let root_page_table = PageTable::new_root(root_page_ptr);
+    pub fn new(pmm: Pmm, root_page_table: PageTable) -> Self {
         Self {
             pmm,
             root_page_table,

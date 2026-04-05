@@ -19,9 +19,7 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{
-    MemoryManager, PageTableEntry, PageTableEntryAttributes, Pmm, Vmm, satp,
-};
+use crate::memory_manager::{Pmm, Vmm};
 
 global_asm!(include_str!("main.s"));
 
@@ -39,49 +37,24 @@ pub extern "C" fn kernel_main() {
         qemu::exit(qemu::ExitCode::Success);
     } else {
         // runs at physical address, before MMU
-        let mut pmm = Pmm::init();
-        enable_virtual_memory(pmm); // noreturn, jumps to kernel_main_virtual
+        enable_virtual_memory(); // noreturn, jumps to kernel_main_virtual
     }
 }
 
 #[unsafe(link_section = ".text.boot")]
-pub fn enable_virtual_memory(mut pmm: Pmm) {
+pub fn enable_virtual_memory() {
     let phys_base_loc = unsafe { &PHYS_BASE as *const u8 as usize };
     // this does not work in code-model=medium
     // let virt_base = unsafe { &VIRT_BASE as *const u8 as usize };
     // so i just hardcode the same value here
     let virt_base_loc: usize = 0xffffffff80000000;
 
-    let phys_root_ptr = pmm.alloc().expect("PMM out of pages") as *mut u64;
+    let mut pmm = Pmm::init();
 
-    const fn loc_to_slot(loc: usize) -> usize {
-        (loc >> 30) & 0b111111111
-    }
-    let identity_slot = loc_to_slot(phys_base_loc);
-    let high_half_slot = loc_to_slot(virt_base_loc);
-    let uart_slot = loc_to_slot(0x00000000);
+    let root_page_table = memory_manager::init_page_table(&mut pmm, phys_base_loc, virt_base_loc);
+    let satp_val = root_page_table.satp();
 
-    let pte_attrs = PageTableEntryAttributes::default()
-        .dirty()
-        .accessed()
-        .execute()
-        .write()
-        .read();
-    let kernel_pte = PageTableEntry::new(phys_base_loc as *const (), pte_attrs).0;
-    let uart_pte = PageTableEntry::new(0x00000000 as *const (), pte_attrs).0;
-
-    unsafe {
-        let identity_slot_ptr = phys_root_ptr.add(identity_slot);
-        let high_half_slot_ptr = phys_root_ptr.add(high_half_slot);
-        let uart_slot_ptr = phys_root_ptr.add(uart_slot);
-        *identity_slot_ptr = kernel_pte;
-        *high_half_slot_ptr = kernel_pte;
-        *uart_slot_ptr = uart_pte;
-    }
-
-    let satp_val = satp(phys_root_ptr as *mut ());
-
-    let vmm = Vmm::init(pmm, phys_root_ptr as *const ());
+    let vmm = Vmm::new(pmm, root_page_table);
     let vmm_ptr = &vmm as *const Vmm;
 
     let phys_entry = kernel_main_virtual as *const () as usize;
