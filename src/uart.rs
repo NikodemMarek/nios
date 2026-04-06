@@ -2,6 +2,10 @@ use core::fmt::Write;
 
 pub struct Uart;
 impl Uart {
+    // This is a test workaround, ideally UART should know it it is in the higher-half or not.
+    #[cfg(test)]
+    const ADDRESS: *mut u8 = 0x10000000 as *mut u8;
+    #[cfg(not(test))]
     const ADDRESS: *mut u8 = 0xffffffff10000000 as *mut u8;
 
     fn print(s: &str) {

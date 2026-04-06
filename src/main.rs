@@ -19,14 +19,12 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{Pmm, Vmm};
+use crate::memory_manager::{MemoryManager, Pmm, Vmm, read_setup_page, write_setup_page};
 
 global_asm!(include_str!("main.s"));
 
-unsafe extern "C" {
-    static PHYS_BASE: u8;
-    static VIRT_BASE: u8;
-}
+const PHYS_KERNEL_BASE: usize = 0x80000000;
+const VIRT_KERNEL_BASE: usize = 0xffffffff80000000;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() {
@@ -43,19 +41,21 @@ pub extern "C" fn kernel_main() {
 
 #[unsafe(link_section = ".text.boot")]
 pub fn enable_virtual_memory() {
-    let phys_base_loc = unsafe { &PHYS_BASE as *const u8 as usize };
-    // this does not work in code-model=medium
-    // let virt_base = unsafe { &VIRT_BASE as *const u8 as usize };
-    // so i just hardcode the same value here
-    let virt_base_loc: usize = 0xffffffff80000000;
+    let phys_base_loc = PHYS_KERNEL_BASE;
+    let virt_base_loc = VIRT_KERNEL_BASE;
 
     let mut pmm = Pmm::init();
 
-    let root_page_table = memory_manager::init_page_table(&mut pmm, phys_base_loc, virt_base_loc);
+    let root_page_table_ptr = pmm.alloc().expect("PMM out of pages");
+    let root_page_table = memory_manager::init_page_table(
+        root_page_table_ptr as *const (),
+        phys_base_loc,
+        virt_base_loc,
+    );
     let satp_val = root_page_table.satp();
 
-    let vmm = Vmm::new(pmm, root_page_table);
-    let vmm_ptr = &vmm as *const Vmm;
+    // write info required to load the setup after virtual memory is enabled
+    let setup_page_loc = write_setup_page(&mut pmm, root_page_table_ptr as *const ());
 
     let phys_entry = kernel_main_virtual as *const () as usize;
     let virt_entry = (phys_entry - phys_base_loc + virt_base_loc) as *const ();
@@ -64,10 +64,10 @@ pub fn enable_virtual_memory() {
         core::arch::asm!(
             "csrw satp, {satp_val}",
             "sfence.vma zero, zero",
-            "mv t5, {mm_ptr}",
+            "mv t5, {setup_page_ptr}",
             "jr {v_addr}",
             satp_val = in(reg) satp_val,
-            mm_ptr = in(reg) vmm_ptr,
+            setup_page_ptr = in(reg) setup_page_loc,
             v_addr = in(reg) virt_entry,
             options(noreturn)
         );
@@ -83,11 +83,13 @@ pub extern "C" fn kernel_main_virtual() -> ! {
     // runs at virtual address, after MMU is on
     println!("virtual memory enabled");
 
-    let vmm_ptr: *const Vmm;
+    let setup_page_loc: usize;
     unsafe {
-        core::arch::asm!("mv {mm_ptr}, t5", mm_ptr = out(reg) vmm_ptr);
+        core::arch::asm!("mv {setup_page_ptr}, t5", setup_page_ptr = out(reg) setup_page_loc);
     }
-    let vmm = unsafe { *vmm_ptr } as Vmm;
+
+    let (pmm, root_page_table) = read_setup_page(setup_page_loc);
+    let vmm = Vmm::new(pmm, root_page_table);
 
     let heap = Heap::new(vmm);
     ALLOCATOR.init(heap);

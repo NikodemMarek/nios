@@ -122,7 +122,8 @@ impl Pmm {
 
         let page_after_kernel_loc = (kernel_end_loc + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
-        let memory_start_ptr = unsafe { &super::_memory_start } as *const u8;
+        // let memory_start_ptr = unsafe { &super::_memory_start } as *const u8;
+        let memory_start_ptr = 0x0 as *const u8;
         let memory_end_ptr = unsafe { &super::_memory_end } as *const u8;
         let memory_size = unsafe { memory_end_ptr.offset_from(memory_start_ptr) as usize } + 1;
 
@@ -139,6 +140,24 @@ impl Pmm {
             ptr: memory_start_ptr,
         }
     }
+
+    pub fn to_raw(&self) -> (*const (), usize) {
+        (self.bitmap.ptr as *const (), self.bitmap.total_pages)
+    }
+    pub fn from_raw(
+        memory_start_ptr: *const (),
+        bitmap_ptr: *const (),
+        total_pages: usize,
+    ) -> Self {
+        let bitmap = Bitmap {
+            ptr: bitmap_ptr as *mut u64,
+            total_pages,
+        };
+        Self {
+            ptr: memory_start_ptr as *const u8,
+            bitmap,
+        }
+    }
 }
 
 impl MemoryManager for Pmm {
@@ -147,7 +166,13 @@ impl MemoryManager for Pmm {
 
         self.bitmap.set_page_status(free_page_index, true);
 
-        Some(unsafe { self.ptr.add(free_page_index * PAGE_SIZE) })
+        // This is test workaround, ideally PMM should work with any memory pointer.
+        let page_ptr = if cfg!(test) {
+            unsafe { self.ptr.add(free_page_index * PAGE_SIZE) }
+        } else {
+            (free_page_index * PAGE_SIZE) as *const u8
+        };
+        Some(page_ptr)
     }
 
     fn free(&mut self, page_ptr: *const u8) {

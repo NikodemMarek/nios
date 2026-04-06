@@ -150,12 +150,11 @@ const fn loc_to_slot(loc: usize) -> usize {
     (loc >> 30) & 0b111111111
 }
 pub fn init(
-    pmm: &mut Pmm,
+    root_page_table_ptr: *const (),
     phys_base_loc: usize,
     virt_base_loc: usize,
 ) -> PageTable<PageTableLevelRoot> {
-    let root_page_table_ptr = pmm.alloc().expect("PMM out of pages");
-    let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+    let mut root_page_table = PageTable::new_root(root_page_table_ptr);
 
     let identity_slot = loc_to_slot(phys_base_loc);
     let high_half_slot = loc_to_slot(virt_base_loc);
