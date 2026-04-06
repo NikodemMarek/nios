@@ -3,9 +3,9 @@ mod page_table_entry;
 mod pmm;
 mod vmm;
 
-use crate::memory_manager::page_table::PageTable;
+use crate::{VIRT_BASE, memory_manager::page_table::PageTable};
 
-pub use page_table::init as init_page_table;
+pub use page_table::{init as init_page_table, remove_kernel_identity_map};
 pub use pmm::Pmm;
 pub use vmm::Vmm;
 
@@ -34,7 +34,7 @@ pub fn write_setup_page(pmm: &mut Pmm, root_page_table_ptr: *const ()) -> usize 
     setup_page_ptr as usize
 }
 pub fn read_setup_page(setup_page_loc: usize) -> (Pmm, PageTable) {
-    let memory_start_ptr = 0xffffffff00000000 as *const u8;
+    let memory_start_ptr = VIRT_BASE as *const u8;
 
     let setup_page_ptr = unsafe { memory_start_ptr.add(setup_page_loc) as *mut u64 };
     let bitmap_ptr = unsafe {
@@ -52,7 +52,7 @@ pub fn read_setup_page(setup_page_loc: usize) -> (Pmm, PageTable) {
         bitmap_ptr as *const (),
         total_pages,
     );
-    let root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+    let root_page_table = PageTable::new_root(root_page_table_ptr as *const (), true);
 
     // cleanup the setup page
     unsafe {

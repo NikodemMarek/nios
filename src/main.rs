@@ -19,12 +19,15 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{MemoryManager, Pmm, Vmm, read_setup_page, write_setup_page};
+use crate::memory_manager::{
+    MemoryManager, Pmm, Vmm, read_setup_page, remove_kernel_identity_map, write_setup_page,
+};
 
 global_asm!(include_str!("main.s"));
 
-const PHYS_KERNEL_BASE: usize = 0x80000000;
-const VIRT_KERNEL_BASE: usize = 0xffffffff80000000;
+const PHYS_BASE: usize = 0x00000000;
+const VIRT_BASE: usize = 0xffffffff00000000;
+const KERNEL_OFFSET: usize = 0x80000000;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() {
@@ -41,8 +44,8 @@ pub extern "C" fn kernel_main() {
 
 #[unsafe(link_section = ".text.boot")]
 pub fn enable_virtual_memory() {
-    let phys_base_loc = PHYS_KERNEL_BASE;
-    let virt_base_loc = VIRT_KERNEL_BASE;
+    let phys_base_loc = PHYS_BASE + KERNEL_OFFSET;
+    let virt_base_loc = VIRT_BASE + KERNEL_OFFSET;
 
     let mut pmm = Pmm::init();
 
@@ -65,6 +68,8 @@ pub fn enable_virtual_memory() {
             "csrw satp, {satp_val}",
             "sfence.vma zero, zero",
             "mv t5, {setup_page_ptr}",
+            "li t0, 0xffffffff00000000",
+            "add sp, sp, t0",
             "jr {v_addr}",
             satp_val = in(reg) satp_val,
             setup_page_ptr = in(reg) setup_page_loc,
@@ -88,10 +93,15 @@ pub extern "C" fn kernel_main_virtual() -> ! {
         core::arch::asm!("mv {setup_page_ptr}, t5", setup_page_ptr = out(reg) setup_page_loc);
     }
 
-    let (pmm, root_page_table) = read_setup_page(setup_page_loc);
+    let (pmm, mut root_page_table) = read_setup_page(setup_page_loc);
     let vmm = Vmm::new(pmm, root_page_table);
 
+    println!("this works");
+    remove_kernel_identity_map(&mut root_page_table);
+    println!("still works");
+
     let heap = Heap::new(vmm);
+    println!("this does not");
     ALLOCATOR.init(heap);
 
     shell::run();
