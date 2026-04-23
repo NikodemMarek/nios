@@ -11,11 +11,11 @@ struct Header(u64);
 impl Header {
     const SIZE: usize = size_of::<usize>();
 
-    fn new(capacity: usize, is_occupied: bool) -> Self {
+    fn new(payload: usize, is_occupied: bool) -> Self {
         Self(if is_occupied {
-            capacity as u64 | (1 << 63)
+            payload as u64 | (1 << 63)
         } else {
-            capacity as u64 & !(1 << 63)
+            payload as u64 & !(1 << 63)
         })
     }
 
@@ -27,10 +27,8 @@ impl Header {
         }
     }
 
-    // Header capacity is not the same as Block capacity, it also includes alignment offset for the
-    // block content.
     #[inline]
-    fn capacity(&self) -> usize {
+    fn payload(&self) -> usize {
         (self.0 & !(1 << 63)) as usize
     }
 
@@ -41,7 +39,7 @@ impl Header {
 
     #[inline]
     fn size(&self) -> usize {
-        Header::SIZE + self.capacity()
+        Header::SIZE + self.payload()
     }
 }
 
@@ -140,7 +138,7 @@ impl Block {
 
         Self::Occupied {
             ptr: block_header_ptr,
-            capacity: header.capacity() - content_offset,
+            capacity: header.payload() - content_offset,
             content_offset,
         }
     }
@@ -192,7 +190,7 @@ impl Iterator for HeadersIterator {
 
         let next_ptr = unsafe { current_ptr.add(header.size()) };
         let next_ptr_offset = next_ptr as usize - self.start_ptr;
-        if next_ptr_offset > PAGE_SIZE {
+        if next_ptr_offset >= PAGE_SIZE {
             self.current_ptr = None;
         } else {
             self.current_ptr = Some(next_ptr);
@@ -214,7 +212,7 @@ impl<M: MemoryManager> Heap<M> {
         let initial_block_header = Header::from_ptr(initial_page as *const Header);
         let initial_block = Block::occupied(
             initial_page as *const u8,
-            initial_block_header.capacity(),
+            initial_block_header.payload() - Header::SIZE,
             Header::SIZE,
         );
 
@@ -261,12 +259,12 @@ impl<M: MemoryManager> Heap<M> {
         let next_block_header_ptr = unsafe { block.ptr().add(block.size()) };
         let next_block_header = Header::from_ptr(next_block_header_ptr as *const Header);
         let free_block_capacity = if next_block_header.is_occupied() {
-            block.capacity()
+            block.content_offset() + block.capacity()
         } else {
-            block.capacity() + next_block_header.size()
+            block.content_offset() + block.capacity() + next_block_header.size()
         };
 
-        let free_block = Block::free(next_block_header_ptr, free_block_capacity);
+        let free_block = Block::free(block.ptr(), free_block_capacity);
         unsafe { free_block.write() };
     }
 
@@ -303,10 +301,14 @@ impl<M: MemoryManager> Heap<M> {
                 (header, ptr, content_alignment_offset)
             })
             .find(|(header, _, content_alignment_offset)| {
-                header.capacity() >= content_alignment_offset + size
+                header.payload() >= content_alignment_offset + size
             })
             .map(|(header, ptr, content_alignment_offset)| {
-                Block::occupied(ptr, header.capacity(), content_alignment_offset)
+                Block::occupied(
+                    ptr,
+                    header.payload() - content_alignment_offset,
+                    content_alignment_offset,
+                )
             })
     }
 
