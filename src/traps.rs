@@ -1,5 +1,7 @@
 use crate::println;
 
+core::arch::global_asm!(include_str!("traps.s"));
+
 #[repr(C)]
 pub struct TrapFrame {
     regs: [u64; 31],

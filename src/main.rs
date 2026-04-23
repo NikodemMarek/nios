@@ -15,13 +15,11 @@ mod shell;
 mod traps;
 mod uart;
 
-use core::arch::global_asm;
-
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
 use crate::memory_manager::{MemoryManager, Pmm, Vmm, read_setup_page, write_setup_page};
 
-global_asm!(include_str!("main.s"));
+core::arch::global_asm!(include_str!("main.s"));
 
 const PHYS_BASE: usize = 0x00000000;
 const VIRT_BASE: usize = 0xffffffff00000000;
