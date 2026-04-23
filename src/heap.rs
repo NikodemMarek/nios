@@ -224,10 +224,10 @@ impl<M: MemoryManager> Heap<M> {
         };
 
         // Create initial free block on a page, that spans the whole page.
-        let block_header = Header::new(page_ptr, PAGE_SIZE - HEADER_SIZE, false);
+        let block_header = Header::new(page_ptr as *const u8, PAGE_SIZE - HEADER_SIZE, false);
         unsafe { block_header.write() };
 
-        page_ptr
+        page_ptr as *const u8
     }
 
     pub fn free(&mut self, aligned_data_ptr: *mut u8) {

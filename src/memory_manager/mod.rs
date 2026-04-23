@@ -19,8 +19,8 @@ unsafe extern "C" {
 pub const PAGE_SIZE: usize = 4096;
 
 pub trait MemoryManager {
-    fn alloc(&mut self) -> Option<*const u8>;
-    fn free(&mut self, page_ptr: *const u8);
+    fn alloc(&mut self) -> Option<*const ()>;
+    fn free(&mut self, page_ptr: *const ());
 }
 
 pub fn write_setup_page(pmm: &mut Pmm, root_page_table_ptr: *const ()) -> usize {
@@ -60,7 +60,7 @@ pub fn read_setup_page(setup_page_loc: usize) -> (Pmm, PageTable) {
         *setup_page_ptr.add(1) = 0;
         *setup_page_ptr.add(2) = 0;
     }
-    pmm.free(setup_page_ptr as *const u8);
+    pmm.free(setup_page_ptr as *const ());
 
     (pmm, root_page_table)
 }

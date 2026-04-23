@@ -16,14 +16,14 @@ impl Vmm {
 }
 
 impl MemoryManager for Vmm {
-    fn alloc(&mut self) -> Option<*const u8> {
+    fn alloc(&mut self) -> Option<*const ()> {
         let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
         let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
 
-        Some(virtual_address as *const u8)
+        Some(virtual_address as *const ())
     }
 
-    fn free(&mut self, page_ptr: *const u8) {
+    fn free(&mut self, page_ptr: *const ()) {
         todo!()
     }
 }

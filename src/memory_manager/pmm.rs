@@ -161,21 +161,21 @@ impl Pmm {
 }
 
 impl MemoryManager for Pmm {
-    fn alloc(&mut self) -> Option<*const u8> {
+    fn alloc(&mut self) -> Option<*const ()> {
         let free_page_index = self.bitmap.free_page_index()?;
 
         self.bitmap.set_page_status(free_page_index, true);
 
         // This is test workaround, ideally PMM should work with any memory pointer.
         let page_ptr = if cfg!(test) {
-            unsafe { self.ptr.add(free_page_index * PAGE_SIZE) }
+            unsafe { self.ptr.add(free_page_index * PAGE_SIZE) as *const () }
         } else {
-            (free_page_index * PAGE_SIZE) as *const u8
+            (free_page_index * PAGE_SIZE) as *const ()
         };
         Some(page_ptr)
     }
 
-    fn free(&mut self, page_ptr: *const u8) {
+    fn free(&mut self, page_ptr: *const ()) {
         let page_loc = page_ptr as usize;
         let memory_start_loc = self.ptr as usize;
         let relative_page_offset = page_loc - memory_start_loc;
