@@ -16,7 +16,7 @@ Goal is to build features incrementally, making sure it just works, improving la
   - [x] Line reader (buffered input, backspace handling)
   - [x] Command parser (tokenize input)
   - [x] Built-in commands
-- [ ] Virtual Memory and Paging (optional)
+- [x] Virtual Memory and Paging
 - [ ] Multitasking and Context Switching (optional)
 
 ### Running
