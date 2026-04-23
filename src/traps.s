@@ -2,15 +2,32 @@
 .align 4
 .global trap_entry
 trap_entry:
+    csrrw sp, sscratch, sp
+
+    // if sscratch was 0, it means we were in S-mode.
+    // otherwise, we were in U-mode
+    bnez sp, from_user_mode
+
+from_supervisor_mode:
+    csrr sp, sscratch
+    addi sp, sp, -256
+
+    addi t0, sp, 256
+    sd t0, 8(sp)
+
+    j save_regs
+
+from_user_mode:
+    addi sp, sp, -256
+
+    // store the U-mode stack pointer
+    csrr t0, sscratch
+    sd t0, 8(sp)
+
+save_regs:
     // store registers in the trap frame
-    addi sp, sp, -248
-    sd x1,  0(sp)
-
-    // x2 register is the stack pointer, we need to recalculate it's position since we changed it at the start
-    addi x1, sp, 248
-    sd x1,  8(sp)
-    ld x1,  0(sp)
-
+    sd x1, 0(sp)
+    // x2 aka sp is already saved (see from_supervisor_mode and from_user_mode)
     sd x3,  16(sp)
     sd x4,  24(sp)
     sd x5,  32(sp)
@@ -41,15 +58,29 @@ trap_entry:
     sd x30, 232(sp)
     sd x31, 240(sp)
 
+    csrr t0, sepc
+    sd t0, 248(sp)
+
+handle_trap:
     // move the machine cause to function argument, and call the trap handler
     mv a0, sp
     csrr a1, scause
     csrr a2, stval
     call trap_handler
 
-    // restore registers
+restore:
+    csrr t0, sstatus
+
+    // if bit 8 was not 0, we were in S-mode
+    andi t0, t0, 0x100
+    bnez t0, restore_regs
+
+restore_from_u:
+    addi t0, sp, 256
+    csrw sscratch, t0
+
+restore_regs:
     ld x1,  0(sp)
-    ld x2,  8(sp)
     ld x3,  16(sp)
     ld x4,  24(sp)
     ld x5,  32(sp)
@@ -79,5 +110,9 @@ trap_entry:
     ld x29, 224(sp)
     ld x30, 232(sp)
     ld x31, 240(sp)
-    addi sp, sp, 248
+
+    ld t0, 248(sp)
+    csrw sepc, t0
+
+    ld x2,  8(sp)
     sret

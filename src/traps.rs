@@ -5,12 +5,14 @@ core::arch::global_asm!(include_str!("traps.s"));
 #[repr(C)]
 pub struct TrapFrame {
     regs: [u64; 31],
+    sepc: u64,
 }
 impl core::fmt::Display for TrapFrame {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.regs
             .iter()
-            .try_for_each(|r| writeln!(f, "{r:064b} | {r}"))
+            .try_for_each(|r| writeln!(f, "{r:064b} | {r}"))?;
+        writeln!(f, "{:064b} | {}", self.sepc, self.sepc)
     }
 }
 
