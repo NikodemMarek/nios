@@ -19,9 +19,7 @@ use core::arch::global_asm;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{
-    MemoryManager, Pmm, Vmm, read_setup_page, remove_kernel_identity_map, write_setup_page,
-};
+use crate::memory_manager::{MemoryManager, Pmm, Vmm, read_setup_page, write_setup_page};
 
 global_asm!(include_str!("main.s"));
 
@@ -86,22 +84,26 @@ static ALLOCATOR: GlobalAllocator<Vmm> = GlobalAllocator::empty();
 #[unsafe(link_section = ".text")]
 pub extern "C" fn kernel_main_virtual() -> ! {
     // runs at virtual address, after MMU is on
-    println!("virtual memory enabled");
+
+    // Update trap vector to virtual address
+    unsafe extern "C" {
+        fn trap_entry();
+    }
+    unsafe {
+        core::arch::asm!("csrw stvec, {}", in(reg) trap_entry);
+    }
 
     let setup_page_loc: usize;
     unsafe {
         core::arch::asm!("mv {setup_page_ptr}, t5", setup_page_ptr = out(reg) setup_page_loc);
     }
 
-    let (pmm, mut root_page_table) = read_setup_page(setup_page_loc);
+    let (pmm, root_page_table) = read_setup_page(setup_page_loc);
     let vmm = Vmm::new(pmm, root_page_table);
 
-    println!("this works");
-    remove_kernel_identity_map(&mut root_page_table);
-    println!("still works");
+    // TODO: Remove identity mapping
 
     let heap = Heap::new(vmm);
-    println!("this does not");
     ALLOCATOR.init(heap);
 
     shell::run();

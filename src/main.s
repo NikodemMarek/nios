@@ -36,7 +36,9 @@ s_mode_entry:
 1:  wfi
     j 1b
 
+.section .text
 .align 4
+.global trap_entry
 trap_entry:
     // store registers in the trap frame
     addi sp, sp, -248
