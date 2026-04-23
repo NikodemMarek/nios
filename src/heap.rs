@@ -2,102 +2,207 @@ use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
 const HEADER_SIZE: usize = 8;
 
-struct Header {
-    ptr: *const u8,
-    capacity: usize,
-    is_occupied: bool,
+fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {
+    let rem = ptr as usize % align;
+    if rem == 0 { 0 } else { align - rem }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct Header(u64);
 impl Header {
-    fn new(ptr: *const u8, capacity: usize, is_occupied: bool) -> Self {
-        Self {
-            ptr,
-            capacity,
-            is_occupied,
-        }
-    }
-
-    fn encode(&self) -> u64 {
-        // This assumes out block size will never be higher than 2^63, so we can use first bit
-        // to store the info.
-        if self.is_occupied {
-            self.capacity as u64 | 1 << 63
+    fn new(capacity: usize, is_occupied: bool) -> Self {
+        Self(if is_occupied {
+            capacity as u64 | (1 << 63)
         } else {
-            self.capacity as u64 & !(1 << 63)
+            capacity as u64 & !(1 << 63)
+        })
+    }
+
+    pub fn from_ptr(ptr: *const Header) -> Self {
+        if ptr.is_null() {
+            Header(0b0)
+        } else {
+            unsafe { *ptr }
         }
     }
 
-    fn size(&self) -> usize {
-        HEADER_SIZE + self.capacity
+    // Header capacity is not the same as Block capacity, it also includes alignment offset for the
+    // block content.
+    #[inline]
+    fn capacity(&self) -> usize {
+        (self.0 & !(1 << 63)) as usize
     }
 
-    unsafe fn from_ptr(ptr: *const u8) -> Self {
-        let raw_header = unsafe { *(ptr as *const u64) };
-        Self {
-            ptr,
-            capacity: (raw_header & !(1 << 63)) as usize,
-            is_occupied: (raw_header >> 63) & 1 == 1,
-        }
-    }
-
-    unsafe fn write(&self) {
-        unsafe {
-            *(self.ptr as *mut u64) = self.encode();
-        }
-    }
-
-    fn content_ptr(&self) -> *const u8 {
-        unsafe { self.ptr.add(HEADER_SIZE) }
-    }
-}
-
-struct Block {
-    header: Header,
-    alignment_offset: usize,
-}
-impl Block {
-    fn new(header: Header, alignment_offset: usize) -> Self {
-        Self {
-            header,
-            alignment_offset,
-        }
-    }
-
-    unsafe fn write(&self) {
-        unsafe {
-            self.header.write();
-            *(self.offset_ptr() as *mut u8) = self.alignment_offset as u8;
-        }
-    }
-
-    fn offset_ptr(&self) -> *const u8 {
-        unsafe { self.aligned_data_ptr().sub(1) }
-    }
-
-    fn aligned_data_ptr(&self) -> *const u8 {
-        unsafe { self.header.content_ptr().add(self.alignment_offset) }
-    }
-
-    fn aligned_capacity(&self) -> usize {
-        self.header.capacity - self.alignment_offset
+    #[inline]
+    fn is_occupied(&self) -> bool {
+        (self.0 >> 63) & 1 == 1
     }
 
     #[inline]
     fn size(&self) -> usize {
-        self.header.size()
+        HEADER_SIZE + self.capacity()
+    }
+}
+
+enum Block {
+    Free {
+        ptr: *const u8,
+        capacity: usize,
+    },
+    Occupied {
+        ptr: *const u8,
+        capacity: usize,
+        alignment_offset: usize,
+    },
+}
+impl Block {
+    fn free(ptr: *const u8, capacity: usize) -> Self {
+        Self::Free { ptr, capacity }
+    }
+    fn occupied(ptr: *const u8, capacity: usize, alignment_offset: usize) -> Self {
+        Self::Occupied {
+            ptr,
+            capacity,
+            alignment_offset,
+        }
     }
 
-    unsafe fn from_aligned_data_ptr(aligned_data_ptr: *const u8) -> Self {
+    fn is_occupied(&self) -> bool {
+        match self {
+            Self::Free { .. } => false,
+            Self::Occupied { .. } => true,
+        }
+    }
+    fn ptr(&self) -> *const u8 {
+        match self {
+            Self::Free { ptr, .. } => *ptr,
+            Self::Occupied { ptr, .. } => *ptr,
+        }
+    }
+    fn capacity(&self) -> usize {
+        match self {
+            Self::Free { capacity, .. } => *capacity,
+            Self::Occupied { capacity, .. } => *capacity,
+        }
+    }
+    fn alignment_offset(&self) -> usize {
+        match self {
+            Self::Free { .. } => 0,
+            Self::Occupied {
+                alignment_offset, ..
+            } => *alignment_offset,
+        }
+    }
+
+    fn size(&self) -> usize {
+        match self {
+            Self::Free { capacity, .. } => HEADER_SIZE + capacity,
+            Self::Occupied {
+                capacity,
+                alignment_offset,
+                ..
+            } => HEADER_SIZE + alignment_offset + capacity,
+        }
+    }
+
+    fn content_ptr(&self) -> *const u8 {
+        match self {
+            Self::Free { ptr, .. } => unsafe { ptr.add(HEADER_SIZE) },
+            Self::Occupied {
+                ptr,
+                alignment_offset,
+                ..
+            } => unsafe { ptr.add(HEADER_SIZE + *alignment_offset) },
+        }
+    }
+
+    unsafe fn write(&self) {
+        let is_occupied = self.is_occupied();
+        let ptr = self.ptr();
+
+        unsafe {
+            *(ptr as *mut Header) =
+                Header::new(self.capacity() + self.alignment_offset(), is_occupied);
+
+            if let Self::Occupied {
+                alignment_offset, ..
+            } = self
+            {
+                *(ptr.add(HEADER_SIZE + alignment_offset - 1) as *mut u8) = *alignment_offset as u8;
+            }
+        }
+    }
+
+    fn from_aligned_data_ptr(aligned_data_ptr: *mut u8) -> Self {
         let alignment_offset = unsafe {
             let offset_ptr = aligned_data_ptr.sub(1);
             *offset_ptr as usize
         };
 
         let block_header_ptr = unsafe { aligned_data_ptr.sub(HEADER_SIZE + alignment_offset) };
+        let header = Header::from_ptr(block_header_ptr as *const Header);
 
-        Self {
-            header: unsafe { Header::from_ptr(block_header_ptr) },
+        Self::Occupied {
+            ptr: block_header_ptr,
+            capacity: header.capacity() - alignment_offset,
             alignment_offset,
         }
+    }
+}
+
+fn try_split_block(block_a: Block, requested_capacity: usize) -> (Block, Option<Block>) {
+    const MIN_BLOCK_SIZE: usize = 16;
+
+    let capacity_to_split = block_a.capacity();
+    if capacity_to_split - requested_capacity < HEADER_SIZE + MIN_BLOCK_SIZE {
+        return (block_a, None);
+    }
+
+    let unaligned_block_b_ptr = unsafe { block_a.content_ptr().add(requested_capacity) };
+    let block_b_header_alignment_offset = alignment_offset_from(unaligned_block_b_ptr, HEADER_SIZE);
+    let block_b_ptr = unsafe { unaligned_block_b_ptr.add(block_b_header_alignment_offset) };
+
+    let block_a = Block::occupied(
+        block_a.ptr(),
+        requested_capacity + block_b_header_alignment_offset,
+        block_a.alignment_offset(),
+    );
+
+    let block_b_capacity = capacity_to_split - block_a.capacity() - HEADER_SIZE;
+    let block_b = Block::free(block_b_ptr, block_b_capacity);
+
+    (block_a, Some(block_b))
+}
+
+struct HeadersIterator {
+    current_ptr: Option<*const u8>,
+    start_ptr: usize,
+}
+impl HeadersIterator {
+    fn new(ptr: *const ()) -> Self {
+        Self {
+            current_ptr: Some(ptr as *const u8),
+            start_ptr: ptr as usize,
+        }
+    }
+}
+impl Iterator for HeadersIterator {
+    type Item = (Header, *const u8);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current_ptr = self.current_ptr?;
+        let header = Header::from_ptr(current_ptr as *const Header);
+
+        let next_ptr = unsafe { current_ptr.add(header.size()) };
+        let next_ptr_offset = next_ptr as usize - self.start_ptr;
+        if next_ptr_offset > PAGE_SIZE {
+            self.current_ptr = None;
+        } else {
+            self.current_ptr = Some(next_ptr);
+        }
+
+        Some((header, current_ptr))
     }
 }
 
@@ -127,130 +232,101 @@ impl<M: MemoryManager> Heap<M> {
             "Cannot allocate {size} bytes, block too big"
         );
 
-        let mut block = self.first_page_with_fit(size, align);
-
-        self.try_split_block(&mut block, size);
-
-        block.header.is_occupied = true;
-        unsafe {
-            block.write();
-            block.aligned_data_ptr()
-        }
-    }
-
-    fn try_split_block(&mut self, block: &mut Block, requested_capacity: usize) {
-        const MIN_BLOCK_SIZE: usize = 16;
-
-        let block_a_capacity =
-            (block.alignment_offset + requested_capacity + HEADER_SIZE - 1) & !(HEADER_SIZE - 1);
-        let remaining = block.header.capacity.saturating_sub(block_a_capacity);
-        if remaining < HEADER_SIZE + MIN_BLOCK_SIZE {
-            return;
-        }
-
-        let block_b_capacity = remaining - HEADER_SIZE;
-
-        block.header.capacity = block_a_capacity;
-
-        let block_b_header_ptr = unsafe { block.header.ptr.add(block.size()) };
-        let block_b = Block::new(Header::new(block_b_header_ptr, block_b_capacity, false), 0);
+        let block = self.first_fit(size, align);
+        let (block_a, block_b) = try_split_block(block, size);
 
         unsafe {
-            block.write();
-            block_b.write();
-        }
+            block_a.write();
+            if let Some(block_b) = block_b {
+                block_b.write();
+            }
+        };
+        block_a.content_ptr()
     }
 
-    fn first_page_with_fit(&mut self, size: usize, align: usize) -> Block {
+    fn get_page_ptrs(&self) -> impl Iterator<Item = *const ()> {
+        (0..self.allocated_pages).map(|i| unsafe { *(self.pages_ptr).add(i) as *const () })
+    }
+
+    fn first_fit(&mut self, size: usize, align: usize) -> Block {
         assert!(HEADER_SIZE + size <= PAGE_SIZE);
 
-        for i in 0..self.allocated_pages {
-            let page_ptr = unsafe { *self.pages_ptr.add(i) };
-            if let Some(page_fit_ptr) = Self::first_fit(page_ptr, size, align) {
-                return page_fit_ptr;
-            }
+        if let Some(fit) = self
+            .get_page_ptrs()
+            .find_map(|page_ptr| Self::first_page_fit(page_ptr, size, align))
+        {
+            return fit;
         }
 
         let new_page_ptr = self.new_page();
-        Self::first_fit(new_page_ptr, size, align)
+        Self::first_page_fit(new_page_ptr, size, align)
             .expect("If block passed the assertion, it has to fit on an empty page")
     }
 
-    fn first_fit(page_ptr: *const u8, size: usize, align: usize) -> Option<Block> {
-        let mut block_ptr = page_ptr;
-
-        while unsafe { block_ptr.offset_from(page_ptr) as usize } < PAGE_SIZE {
-            let block_header = unsafe { Header::from_ptr(block_ptr) };
-
-            if block_header.is_occupied {
-                unsafe {
-                    block_ptr = block_ptr.add(block_header.size());
-                }
-                continue;
-            }
-
-            let content_ptr = block_header.content_ptr();
-            let data_loc = (content_ptr as usize + align + 1) & !(align - 1);
-            let alignment_offset = data_loc - content_ptr as usize;
-
-            let block_size = block_header.size();
-            let block = Block::new(block_header, alignment_offset);
-
-            if block.aligned_capacity() >= size {
-                return Some(block);
-            }
-
-            unsafe {
-                block_ptr = block_ptr.add(block_size);
-            }
-        }
-
-        None
+    fn first_page_fit(page_ptr: *const (), size: usize, align: usize) -> Option<Block> {
+        HeadersIterator::new(page_ptr)
+            .filter(|(header, _)| !header.is_occupied())
+            .map(|(header, ptr)| {
+                let alignment_offset =
+                    alignment_offset_from(unsafe { ptr.add(HEADER_SIZE) }, align);
+                let alignment_offset = if alignment_offset == 0 {
+                    align
+                } else {
+                    alignment_offset
+                };
+                (header, ptr, alignment_offset)
+            })
+            .find(|(header, _, alignment_offset)| header.capacity() >= alignment_offset + size)
+            .map(|(header, ptr, alignment_offset)| {
+                Block::occupied(ptr, header.capacity(), alignment_offset)
+            })
     }
 
-    fn new_page(&mut self) -> *const u8 {
+    fn new_page(&mut self) -> *const () {
         let page_ptr = Heap::request_page(&mut self.mm);
         unsafe {
             let pages_page_ptr = self.pages_ptr.add(self.allocated_pages);
-            *pages_page_ptr = page_ptr;
+            *(pages_page_ptr) = page_ptr as *const u8;
         }
         self.allocated_pages += 1;
         page_ptr
     }
 
-    fn request_page(pmm: &mut M) -> *const u8 {
+    fn request_page(pmm: &mut M) -> *const () {
         let Some(page_ptr) = pmm.alloc() else {
             panic!("PMM run out of free pages");
         };
 
         // Create initial free block on a page, that spans the whole page.
-        let block_header = Header::new(page_ptr as *const u8, PAGE_SIZE - HEADER_SIZE, false);
-        unsafe { block_header.write() };
+        // let block_header = Header::new(page_ptr as *const u8, PAGE_SIZE - HEADER_SIZE, false);
+        let block = Block::free(page_ptr as *const u8, PAGE_SIZE - HEADER_SIZE);
+        unsafe { block.write() };
 
-        page_ptr as *const u8
+        page_ptr
     }
 
     pub fn free(&mut self, aligned_data_ptr: *mut u8) {
-        let block = unsafe { Block::from_aligned_data_ptr(aligned_data_ptr) };
+        let block = Block::from_aligned_data_ptr(aligned_data_ptr);
 
-        let next_block_header = unsafe {
-            let next_block_header_ptr = block.header.ptr.add(block.size());
-            Header::from_ptr(next_block_header_ptr)
-        };
-        let free_block_capacity = if next_block_header.is_occupied {
-            block.header.capacity
+        let next_block_header_ptr = unsafe { block.ptr().add(block.size()) };
+        let next_block_header = Header::from_ptr(next_block_header_ptr as *const Header);
+        let free_block_capacity = if next_block_header.is_occupied() {
+            block.capacity()
         } else {
-            block.header.capacity + next_block_header.size()
+            block.capacity() + next_block_header.size()
         };
 
-        let free_block_header = Header::new(block.header.ptr, free_block_capacity, false);
-        unsafe { free_block_header.write() };
+        let free_block = Block::free(next_block_header_ptr, free_block_capacity);
+        unsafe { free_block.write() };
     }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use crate::{heap::Heap, memory_manager::setup_test_pmm};
+    use crate::{
+        heap::{Block, Heap, try_split_block},
+        memory_manager::{Pmm, setup_test_pmm},
+    };
 
     #[test_case]
     fn test_malloc_and_write() {
@@ -274,20 +350,6 @@ pub mod tests {
     }
 
     #[test_case]
-    fn test_multiple_allocations() {
-        let pmm = setup_test_pmm();
-        let mut heap = Heap::new(pmm);
-
-        let ptr1 = heap.malloc(16, 8);
-        let ptr2 = heap.malloc(8, 4);
-        let ptr3 = heap.malloc(9, 3);
-
-        assert_ne!(ptr1, ptr2);
-        assert_ne!(ptr1, ptr3);
-        assert_ne!(ptr2, ptr3);
-    }
-
-    #[test_case]
     fn test_large_alignment() {
         let pmm = setup_test_pmm();
         let mut heap = Heap::new(pmm);
@@ -296,5 +358,83 @@ pub mod tests {
         let ptr = heap.malloc(8, align);
 
         assert_eq!(ptr as usize % align, 0);
+    }
+
+    #[test_case]
+    fn test_multiple_allocations() {
+        let pmm = setup_test_pmm();
+        let mut heap = Heap::new(pmm);
+
+        let ptr1 = heap.malloc(16, 8);
+        assert_eq!(ptr1 as usize % 8, 0);
+        let ptr2 = heap.malloc(8, 4);
+        assert_eq!(ptr2 as usize % 4, 0);
+        let ptr3 = heap.malloc(9, 3);
+        assert_eq!(ptr3 as usize % 3, 0);
+
+        assert_ne!(ptr1, ptr2);
+        assert_ne!(ptr1, ptr3);
+        assert_ne!(ptr2, ptr3);
+    }
+
+    #[test_case]
+    fn test_allocation_on_multiple_pages() {
+        use crate::memory_manager::PAGE_SIZE;
+
+        let pmm = setup_test_pmm();
+        let mut heap = Heap::new(pmm);
+
+        let ptr1 = heap.malloc(4000, 8);
+        let ptr2 = heap.malloc(100, 8);
+
+        assert_ne!(ptr1, ptr2);
+        assert_ne!(ptr1 as usize / PAGE_SIZE, ptr2 as usize / PAGE_SIZE);
+    }
+
+    #[test_case]
+    fn test_block_split() {
+        let block = Block::occupied(0 as *const u8, 100, 0);
+        let (block_a, block_b) = try_split_block(block, 90);
+        assert_eq!(block_a.ptr() as usize, 0);
+        assert_eq!(block_a.content_ptr() as usize, 8);
+        assert_eq!(block_a.capacity(), 100);
+        assert_eq!(block_a.alignment_offset(), 0);
+        assert!(block_b.is_none());
+
+        let block = Block::occupied(0 as *const u8, 100, 0);
+        let (block_a, block_b) = try_split_block(block, 50);
+        assert_eq!(block_a.ptr() as usize, 0);
+        assert_eq!(block_a.content_ptr() as usize, 8);
+        assert_eq!(block_a.capacity(), 56);
+        assert_eq!(block_a.alignment_offset(), 0);
+        if let Some(block_b) = block_b {
+            assert_eq!(block_b.ptr() as usize, 64);
+            assert_eq!(block_b.capacity(), 36);
+            assert_eq!(block_b.alignment_offset(), 0);
+        }
+
+        let block = Block::occupied(0 as *const u8, 100, 6);
+        let (block_a, block_b) = try_split_block(block, 50);
+        assert_eq!(block_a.ptr() as usize, 0);
+        assert_eq!(block_a.content_ptr() as usize, 14);
+        assert_eq!(block_a.capacity(), 50);
+        assert_eq!(block_a.alignment_offset(), 6);
+        if let Some(block_b) = block_b {
+            assert_eq!(block_b.ptr() as usize, 64);
+            assert_eq!(block_b.capacity(), 42);
+            assert_eq!(block_b.alignment_offset(), 0);
+        }
+
+        let block = Block::occupied(0 as *const u8, 100, 3);
+        let (block_a, block_b) = try_split_block(block, 50);
+        assert_eq!(block_a.ptr() as usize, 0);
+        assert_eq!(block_a.content_ptr() as usize, 11);
+        assert_eq!(block_a.capacity(), 53);
+        assert_eq!(block_a.alignment_offset(), 3);
+        if let Some(block_b) = block_b {
+            assert_eq!(block_b.ptr() as usize, 64);
+            assert_eq!(block_b.capacity(), 39);
+            assert_eq!(block_b.alignment_offset(), 0);
+        }
     }
 }
