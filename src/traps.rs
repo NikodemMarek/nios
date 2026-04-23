@@ -1,9 +1,21 @@
 use crate::println;
 
+#[repr(C)]
+pub struct TrapFrame {
+    regs: [u64; 31],
+}
+impl core::fmt::Display for TrapFrame {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.regs
+            .iter()
+            .try_for_each(|r| writeln!(f, "{r:064b} | {r}"))
+    }
+}
+
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_handler(cause: u64, value: u64) {
-    let is_exception = (cause >> 63) & 1 == 0;
-    let cause_code = cause & 0x7fffffffffffffff;
+pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
+    let is_exception = (scause >> 63) & 1 == 0;
+    let cause_code = scause & 0x7fffffffffffffff;
 
     if is_exception {
         let cause_str = match cause_code {
@@ -24,7 +36,7 @@ pub extern "C" fn trap_handler(cause: u64, value: u64) {
             _ => "Unknown",
         };
         println!(
-            "Exception trap called, cause: [{cause_code}] {cause_str} with value: {value:#064b}"
+            "Exception trap called, cause: [{cause_code}] {cause_str} with value: {stval:#064b}"
         );
         todo!("handle exception")
     } else {

@@ -43,7 +43,12 @@ trap_entry:
     // store registers in the trap frame
     addi sp, sp, -248
     sd x1,  0(sp)
-    sd x2,  8(sp)
+
+    // x2 register is the stack pointer, we need to recalculate it's position since we changed it at the start
+    addi x1, sp, 248
+    sd x1,  8(sp)
+    ld x1,  0(sp)
+
     sd x3,  16(sp)
     sd x4,  24(sp)
     sd x5,  32(sp)
@@ -75,8 +80,9 @@ trap_entry:
     sd x31, 240(sp)
 
     // move the machine cause to function argument, and call the trap handler
-    csrr x10, scause
-    csrr x11, stval
+    mv a0, sp
+    csrr a1, scause
+    csrr a2, stval
     call trap_handler
 
     // restore registers
