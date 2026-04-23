@@ -53,7 +53,7 @@ impl<L> PageTable<L> {
         let free_index = self.free_index()?;
 
         let page_table_ptr = pmm.alloc().expect("PMM out of pages");
-        let page_table_pte = PageTableEntry::page_table(page_table_ptr as *const ());
+        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
 
         self.set_pte(free_index, page_table_pte);
 
@@ -63,7 +63,7 @@ impl<L> PageTable<L> {
         let free_index = self.free_index()?;
 
         let leaf_page_ptr = pmm.alloc().expect("PMM out of pages");
-        let leaf_page_pte = PageTableEntry::leaf(leaf_page_ptr as *const ());
+        let leaf_page_pte = PageTableEntry::leaf(leaf_page_ptr);
 
         self.set_pte(free_index, leaf_page_pte);
 
