@@ -11,61 +11,26 @@ mod heap;
 mod memory_manager;
 mod panic;
 mod qemu;
+mod sbi;
 mod shell;
 mod traps;
 mod uart;
+
+use core::fmt::Write;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
 use crate::memory_manager::{MemoryManager, Pmm, Vmm, read_setup_page, write_setup_page};
 
-core::arch::global_asm!(include_str!("main.s"));
+core::arch::global_asm!(include_str!("bootloader.s"));
 
 const PHYS_BASE: usize = 0x00000000;
 const VIRT_BASE: usize = 0xffffffff00000000;
 const KERNEL_OFFSET: usize = 0x80200000;
 
-#[inline(always)]
-fn sbi_call(
-    arg0: usize,
-    arg1: usize,
-    arg2: usize,
-    arg3: usize,
-    arg4: usize,
-    arg5: usize,
-    fid: usize,
-    eid: usize,
-) -> (isize, isize) {
-    let (error, value);
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a0") arg0,
-            in("a1") arg1,
-            in("a2") arg2,
-            in("a3") arg3,
-            in("a4") arg4,
-            in("a5") arg5,
-            in("a6") fid,
-            in("a7") eid,
-            lateout("a0") error,
-            lateout("a1") value,
-        );
-    }
-    (error, value)
-}
-
-fn putchar(c: char) {
-    let buffer = [c as u8];
-    let ptr = buffer.as_ptr() as usize;
-    sbi_call(1, ptr, 0, 0, 0, 0, 0, 0x4442434E);
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() {
-    for c in "Hello nios!".chars() {
-        putchar(c);
-    }
+    write!(crate::sbi::Sbi, "Hello nios!");
 
     loop {}
 }
@@ -135,12 +100,6 @@ pub extern "C" fn kernel_main_virtual() -> ! {
 
     let heap = Heap::new(vmm);
     ALLOCATOR.init(heap);
-
-    let current_time: u64;
-    unsafe {
-        core::arch::asm!("csrr {res}, time", res = out(reg) current_time);
-        scheduler::set_timer(current_time + 10_000_000);
-    }
 
     shell::run();
 

@@ -1,6 +1,8 @@
 OUTPUT_ARCH(riscv)
 ENTRY(boot)
 
+PAGE_SIZE = 4K;
+
 SECTIONS
 {
     . = 0x80200000;
@@ -24,4 +26,7 @@ SECTIONS
 
     . = ALIGN(16);
     _stack_top = . + 0x4000;
+
+    . = ALIGN(PAGE_SIZE);
+    _free_memory_start = .;
 }

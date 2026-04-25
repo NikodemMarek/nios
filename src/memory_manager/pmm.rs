@@ -1,3 +1,5 @@
+use core::fmt::Write;
+
 use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
 struct Sector(u64);
@@ -182,6 +184,65 @@ impl MemoryManager for Pmm {
         let page_index = relative_page_offset / PAGE_SIZE;
         self.bitmap.set_page_status(page_index, false);
     }
+}
+
+// This assumes memory size is specified in bytes, and free_memory_page_start_ptr is a pointer
+// to the first location in ram that is free, and aligned to PAGE_SIZE, also all following
+// addresses must be empty.
+#[unsafe(link_section = ".text.boot")]
+#[unsafe(no_mangle)]
+pub extern "C" fn init_bitmap(
+    memory_size: usize,
+    memory_start_ptr: *const u8,
+    free_memory_page_start_ptr: *const u8,
+) -> usize {
+    const PAGE_SIZE: usize = 4096; // TOOD: This should be defined in the linker file.
+
+    let occupied_locations = free_memory_page_start_ptr as usize - memory_start_ptr as usize;
+    let occupied_pages = occupied_locations / PAGE_SIZE;
+
+    let bitmap_start_loc = free_memory_page_start_ptr as usize;
+    let total_pages = memory_size / PAGE_SIZE;
+
+    fn write_bitmap(bitmap_start_ptr: *mut u8, preoccupied_pages: usize, total_pages: usize) {
+        let ptr = bitmap_start_ptr as *mut u64;
+
+        // Reserve the pages needed to store the bitmap itself.
+        let bits_on_page = PAGE_SIZE * 8;
+        let bitmap_occupied_pages = total_pages.div_ceil(bits_on_page);
+        let total_occupied_pages = preoccupied_pages + bitmap_occupied_pages;
+        let bitmap_fully_occupied_sectors = total_occupied_pages / Sector::capacity();
+        for i in 0..bitmap_fully_occupied_sectors {
+            unsafe {
+                let sector_ptr = ptr.add(i);
+                *sector_ptr = !0;
+            };
+        }
+        let leftover_bits = total_occupied_pages % Sector::capacity();
+        if leftover_bits != 0 {
+            let mut sector_mask = 0;
+            for _ in 0..leftover_bits {
+                sector_mask = (sector_mask << 1) + 1;
+            }
+            unsafe {
+                let leftover_sector_ptr = ptr.add(bitmap_fully_occupied_sectors);
+                *leftover_sector_ptr = sector_mask;
+            };
+        }
+    }
+    write_bitmap(bitmap_start_loc as *mut u8, occupied_pages, total_pages);
+
+    total_pages
+}
+
+#[unsafe(link_section = ".text.boot")]
+#[unsafe(no_mangle)]
+pub extern "C" fn print_bitmap(bitmap_ptr: *const u8, total_pages: usize) {
+    let bitmap = Bitmap {
+        ptr: bitmap_ptr as *mut u64,
+        total_pages,
+    };
+    writeln!(crate::sbi::Sbi, "{}", bitmap);
 }
 
 #[cfg(test)]
