@@ -5,7 +5,7 @@ mod vmm;
 
 use crate::{VIRT_BASE, memory_manager::page_table::PageTable};
 
-pub use page_table::{init as init_page_table, remove_kernel_identity_map};
+pub use page_table::remove_kernel_identity_map;
 pub use pmm::Pmm;
 pub use vmm::Vmm;
 

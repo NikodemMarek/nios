@@ -29,8 +29,9 @@ fn sbi_call(
 }
 
 fn print(s: &str) {
-    let ptr = s.as_bytes().as_ptr() as usize;
-    sbi_call(s.len(), ptr, 0, 0, 0, 0, 0, 0x4442434E);
+    for byte in s.bytes() {
+        sbi_call(byte as usize, 0, 0, 0, 0, 0, 0, 1);
+    }
 }
 pub struct Sbi;
 impl core::fmt::Write for Sbi {

@@ -172,31 +172,6 @@ const fn loc_to_slot(loc: usize) -> usize {
     (loc >> 30) & 0b111111111
 }
 
-pub fn init(
-    root_page_table_ptr: *const (),
-    phys_base_loc: usize,
-    virt_base_loc: usize,
-) -> PageTable<PageTableLevelRoot> {
-    let mut root_page_table = PageTable::new_root(root_page_table_ptr, false);
-
-    let identity_slot = loc_to_slot(phys_base_loc);
-    let high_half_slot = loc_to_slot(virt_base_loc);
-    let kernel_pte = PageTableEntry::leaf(phys_base_loc as *const ());
-    root_page_table.set_pte(identity_slot, kernel_pte);
-    root_page_table.set_pte(high_half_slot, kernel_pte);
-
-    let uart_slot = loc_to_slot(VIRT_BASE + crate::uart::Uart::OFFSET);
-    let uart_pte = PageTableEntry::leaf(0x00000000 as *const ());
-    root_page_table.set_pte(uart_slot, uart_pte);
-
-    // pre-locate the first pte, to avoid null-pointer dereference
-    let empty_slot = loc_to_slot(0x00000000);
-    let empty_pte = PageTableEntry::leaf(0x00000000 as *const ());
-    root_page_table.set_pte(empty_slot, empty_pte);
-
-    root_page_table
-}
-
 pub fn remove_kernel_identity_map(root_page_table: &mut PageTable<PageTableLevelRoot>) {
     let identity_slot = loc_to_slot(KERNEL_OFFSET);
 

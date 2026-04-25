@@ -29,47 +29,11 @@ const VIRT_BASE: usize = 0xffffffff00000000;
 const KERNEL_OFFSET: usize = 0x80200000;
 
 #[unsafe(no_mangle)]
+#[unsafe(link_section = ".text")]
 pub extern "C" fn kernel_main() {
-    write!(crate::sbi::Sbi, "Hello nios!");
+    writeln!(crate::sbi::Sbi, "Hello from high-half!");
 
     loop {}
-}
-
-#[unsafe(link_section = ".text.boot")]
-pub fn enable_virtual_memory() {
-    let phys_base_loc = PHYS_BASE + KERNEL_OFFSET;
-    let virt_base_loc = VIRT_BASE + KERNEL_OFFSET;
-
-    let mut pmm = Pmm::init();
-
-    let root_page_table_ptr = pmm.alloc().expect("PMM out of pages");
-    let root_page_table = memory_manager::init_page_table(
-        root_page_table_ptr as *const (),
-        phys_base_loc,
-        virt_base_loc,
-    );
-    let satp_val = root_page_table.satp();
-
-    // write info required to load the setup after virtual memory is enabled
-    let setup_page_loc = write_setup_page(&mut pmm, root_page_table_ptr as *const ());
-
-    let phys_entry = kernel_main_virtual as *const () as usize;
-    let virt_entry = (phys_entry - phys_base_loc + virt_base_loc) as *const ();
-
-    unsafe {
-        core::arch::asm!(
-            "csrw satp, {satp_val}",
-            "sfence.vma zero, zero",
-            "mv t5, {setup_page_ptr}",
-            "li t0, 0xffffffff00000000",
-            "add sp, sp, t0",
-            "jr {v_addr}",
-            satp_val = in(reg) satp_val,
-            setup_page_ptr = in(reg) setup_page_loc,
-            v_addr = in(reg) virt_entry,
-            options(noreturn)
-        );
-    }
 }
 
 #[global_allocator]
