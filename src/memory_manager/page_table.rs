@@ -210,24 +210,10 @@ mod tests {
 
     #[test_case]
     fn test_loc_to_slot() {
-        // Test that loc_to_slot extracts the correct 9 bits for the slot index
-        // The slot is bits [38:30] of the virtual address
-        assert_eq!(loc_to_slot(0x00000000), 0, "zero should map to slot 0");
-        assert_eq!(
-            loc_to_slot(0x40000000),
-            1,
-            "0x40000000 should map to slot 1"
-        );
-        assert_eq!(
-            loc_to_slot(KERNEL_OFFSET),
-            loc_to_slot(0x80000000),
-            "kernel offset slot"
-        );
-        assert_eq!(
-            loc_to_slot(VIRT_BASE),
-            0x1FC,
-            "high half should map to high slot"
-        );
+        assert_eq!(loc_to_slot(0x00000000), 0);
+        assert_eq!(loc_to_slot(0x40000000), 1);
+        assert_eq!(loc_to_slot(KERNEL_OFFSET), 2);
+        assert_eq!(loc_to_slot(VIRT_BASE), 0x1FC);
     }
 
     #[test_case]

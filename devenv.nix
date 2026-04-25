@@ -24,9 +24,10 @@
       -machine virt \
       -cpu rv64 \
       -nographic \
-      -bios none \
-      -kernel target/riscv64gc-unknown-none-elf/debug/nios \
-      -serial mon:stdio
+      -bios default \
+      -serial mon:stdio \
+      --no-reboot \
+      -kernel target/riscv64gc-unknown-none-elf/debug/nios
   '';
 
   scripts.check.exec = ''

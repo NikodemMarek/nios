@@ -23,19 +23,51 @@ core::arch::global_asm!(include_str!("main.s"));
 
 const PHYS_BASE: usize = 0x00000000;
 const VIRT_BASE: usize = 0xffffffff00000000;
-const KERNEL_OFFSET: usize = 0x80000000;
+const KERNEL_OFFSET: usize = 0x80200000;
+
+#[inline(always)]
+fn sbi_call(
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+    arg5: usize,
+    fid: usize,
+    eid: usize,
+) -> (isize, isize) {
+    let (error, value);
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a0") arg0,
+            in("a1") arg1,
+            in("a2") arg2,
+            in("a3") arg3,
+            in("a4") arg4,
+            in("a5") arg5,
+            in("a6") fid,
+            in("a7") eid,
+            lateout("a0") error,
+            lateout("a1") value,
+        );
+    }
+    (error, value)
+}
+
+fn putchar(c: char) {
+    let buffer = [c as u8];
+    let ptr = buffer.as_ptr() as usize;
+    sbi_call(1, ptr, 0, 0, 0, 0, 0, 0x4442434E);
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() {
-    if cfg!(test) {
-        #[cfg(test)]
-        test_main();
-
-        qemu::exit(qemu::ExitCode::Success);
-    } else {
-        // runs at physical address, before MMU
-        enable_virtual_memory(); // noreturn, jumps to kernel_main_virtual
+    for c in "Hello nios!".chars() {
+        putchar(c);
     }
+
+    loop {}
 }
 
 #[unsafe(link_section = ".text.boot")]
@@ -103,6 +135,12 @@ pub extern "C" fn kernel_main_virtual() -> ! {
 
     let heap = Heap::new(vmm);
     ALLOCATOR.init(heap);
+
+    let current_time: u64;
+    unsafe {
+        core::arch::asm!("csrr {res}, time", res = out(reg) current_time);
+        scheduler::set_timer(current_time + 10_000_000);
+    }
 
     shell::run();
 
