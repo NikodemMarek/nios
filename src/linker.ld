@@ -33,6 +33,8 @@ SECTIONS
 
     _memory_start_virt = _memory_start + VIRT_OFFSET;
 
+    _root_page_table_virt = _root_page_table + VIRT_OFFSET;
+
     .text ALIGN(PAGE_SIZE) : AT(ADDR(.text) - VIRT_OFFSET) {
         *(.text .text.*)
     }

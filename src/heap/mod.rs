@@ -138,9 +138,9 @@ impl<M: MemoryManager> Heap<M> {
         page_ptr
     }
 
-    fn request_page(pmm: &mut M) -> *const () {
-        let Some(page_ptr) = pmm.alloc() else {
-            panic!("PMM run out of free pages");
+    fn request_page(mm: &mut M) -> *const () {
+        let Some(page_ptr) = mm.alloc() else {
+            panic!("MM run out of free pages");
         };
 
         // Create initial free block on a page, that spans the whole page.

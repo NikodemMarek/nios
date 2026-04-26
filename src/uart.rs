@@ -8,7 +8,7 @@ impl Uart {
     #[cfg(test)]
     const ADDRESS: *mut u8 = Uart::OFFSET as *mut u8;
     #[cfg(not(test))]
-    const ADDRESS: *mut u8 = (crate::VIRT_BASE + Uart::OFFSET) as *mut u8;
+    const ADDRESS: *mut u8 = (0xffffffff00000000 + Uart::OFFSET) as *mut u8;
 
     fn print(s: &str) {
         for c in s.bytes() {

@@ -3,6 +3,7 @@ mod page_table_entry;
 mod pmm;
 mod vmm;
 
+pub use page_table::PageTable;
 pub use pmm::{Pmm, init_pmm};
 pub use vmm::Vmm;
 

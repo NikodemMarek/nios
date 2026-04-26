@@ -1,7 +1,4 @@
-use crate::{
-    KERNEL_OFFSET, PHYS_BASE, VIRT_BASE,
-    memory_manager::{MemoryManager, Pmm, page_table_entry::PageTableEntry},
-};
+use crate::memory_manager::{MemoryManager, Pmm, page_table_entry::PageTableEntry};
 
 #[derive(Copy, Clone)]
 pub struct PageTableLevelRoot;
@@ -14,19 +11,13 @@ struct PageTableLevelL0;
 pub struct PageTable<PageTableLevel = PageTableLevelRoot> {
     level: core::marker::PhantomData<PageTableLevel>,
     ptr: *const PageTableEntry,
-    offset: usize,
 }
 impl<L> PageTable<L> {
-    fn new(ptr: *const (), offset: usize) -> Self {
+    fn new(ptr: *const ()) -> Self {
         Self {
             level: core::marker::PhantomData,
             ptr: ptr as *const PageTableEntry,
-            offset,
         }
-    }
-
-    fn page_table_ptr(&self, ptr: *const ()) -> *const () {
-        (self.offset + ptr as usize) as *const ()
     }
 
     fn get_pte(&self, i: usize) -> PageTableEntry {
@@ -53,6 +44,7 @@ impl<L> PageTable<L> {
         let free_index = self.free_index()?;
 
         let page_table_ptr = pmm.alloc().expect("PMM out of pages");
+        let page_table_ptr = get_ptr(page_table_ptr);
         let page_table_pte = PageTableEntry::page_table(page_table_ptr);
 
         self.set_pte(free_index, page_table_pte);
@@ -63,6 +55,7 @@ impl<L> PageTable<L> {
         let free_index = self.free_index()?;
 
         let leaf_page_ptr = pmm.alloc().expect("PMM out of pages");
+        let leaf_page_ptr = get_ptr(leaf_page_ptr);
         let leaf_page_pte = PageTableEntry::leaf(leaf_page_ptr);
 
         self.set_pte(free_index, leaf_page_pte);
@@ -70,12 +63,16 @@ impl<L> PageTable<L> {
         Some(free_index)
     }
 }
+
+fn get_ptr(ptr: *const ()) -> *const () {
+    (ptr as usize - 0xffffffff00000000) as *const ()
+}
+
 impl PageTable<PageTableLevelRoot> {
-    pub fn new_root(ptr: *const (), is_virtual: bool) -> PageTable<PageTableLevelRoot> {
+    pub fn new_root(ptr: *const ()) -> PageTable<PageTableLevelRoot> {
         PageTable {
             level: core::marker::PhantomData::<PageTableLevelRoot>,
             ptr: ptr as *const PageTableEntry,
-            offset: if is_virtual { VIRT_BASE } else { PHYS_BASE },
         }
     }
 
@@ -91,9 +88,8 @@ impl PageTable<PageTableLevelRoot> {
             .filter(|(_, pte)| pte.is_valid() && !pte.is_leaf())
             .find_map(|(i, pte)| {
                 // PTEs store physical addresses; convert to virtual to access the page table.
-                let l1_page_table_ptr = self.page_table_ptr(pte.page_ptr());
-                let mut l1_page_table =
-                    PageTable::<PageTableLevelL1>::new(l1_page_table_ptr, self.offset);
+                let l1_page_table_ptr = pte.page_ptr();
+                let mut l1_page_table = PageTable::<PageTableLevelL1>::new(l1_page_table_ptr);
 
                 l1_page_table.add_page(pmm).map(|p| (i, p.0, p.1))
             });
@@ -106,10 +102,7 @@ impl PageTable<PageTableLevelRoot> {
         let new_l1_page_index = self.add_page_table(pmm)?;
         let new_l1_page_pte = self.get_pte(new_l1_page_index);
 
-        let mut new_l1_page = PageTable::<PageTableLevelL1>::new(
-            self.page_table_ptr(new_l1_page_pte.page_ptr()),
-            self.offset,
-        );
+        let mut new_l1_page = PageTable::<PageTableLevelL1>::new(new_l1_page_pte.page_ptr());
         let l1_add_page_result = new_l1_page
             .add_page(pmm)
             .expect("new page table cannot be full");
@@ -129,9 +122,8 @@ impl PageTable<PageTableLevelL1> {
             .filter(|(_, pte)| pte.is_valid() && !pte.is_leaf())
             .find_map(|(i, pte)| {
                 // PTEs store physical addresses; convert to virtual to access the page table.
-                let l0_page_table_ptr = self.page_table_ptr(pte.page_ptr());
-                let mut l0_page_table =
-                    PageTable::<PageTableLevelL0>::new(l0_page_table_ptr, self.offset);
+                let l0_page_table_ptr = pte.page_ptr();
+                let mut l0_page_table = PageTable::<PageTableLevelL0>::new(l0_page_table_ptr);
 
                 l0_page_table.add_page(pmm).map(|p| (i, p))
             });
@@ -144,10 +136,7 @@ impl PageTable<PageTableLevelL1> {
         let new_l0_page_index = self.add_page_table(pmm)?;
         let new_l0_page_pte = self.get_pte(new_l0_page_index);
 
-        let mut new_l0_page = PageTable::<PageTableLevelL0>::new(
-            self.page_table_ptr(new_l0_page_pte.page_ptr()),
-            self.offset,
-        );
+        let mut new_l0_page = PageTable::<PageTableLevelL0>::new(new_l0_page_pte.page_ptr());
         let l0_page_index = new_l0_page
             .add_page(pmm)
             .expect("new page table cannot be full");
@@ -168,16 +157,16 @@ impl<L> core::fmt::Display for PageTable<L> {
     }
 }
 
-const fn loc_to_slot(loc: usize) -> usize {
-    (loc >> 30) & 0b111111111
-}
-
-pub fn remove_kernel_identity_map(root_page_table: &mut PageTable<PageTableLevelRoot>) {
-    let identity_slot = loc_to_slot(KERNEL_OFFSET);
-
-    let empty_pte = PageTableEntry::empty();
-    root_page_table.set_pte(identity_slot, empty_pte);
-}
+// const fn loc_to_slot(loc: usize) -> usize {
+//     (loc >> 30) & 0b111111111
+// }
+//
+// pub fn remove_kernel_identity_map(root_page_table: &mut PageTable<PageTableLevelRoot>) {
+//     let identity_slot = loc_to_slot(KERNEL_OFFSET);
+//
+//     let empty_pte = PageTableEntry::empty();
+//     root_page_table.set_pte(identity_slot, empty_pte);
+// }
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,3 @@
-use crate::println;
-
 core::arch::global_asm!(include_str!("traps.s"));
 
 #[repr(C)]
@@ -21,6 +19,8 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
     let is_exception = (scause >> 63) & 1 == 0;
     let cause_code = scause & 0x7fffffffffffffff;
 
+    use core::fmt::Write;
+
     if is_exception {
         let cause_str = match cause_code {
             0 => "Instruction Address Misaligned",
@@ -39,7 +39,8 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
             15 => "Store Page Fault",
             _ => "Unknown",
         };
-        println!(
+        writeln!(
+            crate::sbi::Sbi,
             "Exception trap called, cause: [{cause_code}] {cause_str} with value: {stval:#064b}"
         );
         todo!("handle exception")
@@ -53,7 +54,11 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
             11 => "Machine External Interrupt",
             _ => "Unknown",
         };
-        println!("Interrupt trap called, cause: [{cause_code}] {cause_str}");
+
+        writeln!(
+            crate::sbi::Sbi,
+            "Interrupt trap called, cause: [{cause_code}] {cause_str}"
+        );
         todo!("handle interrupt")
     }
 }

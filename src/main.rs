@@ -20,13 +20,12 @@ use core::fmt::Write;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{MemoryManager, Pmm, Vmm};
+use crate::memory_manager::{PageTable, Vmm};
 
 core::arch::global_asm!(include_str!("bootloader.s"));
 
-const PHYS_BASE: usize = 0x00000000;
-const VIRT_BASE: usize = 0xffffffff00000000;
-const KERNEL_OFFSET: usize = 0x80200000;
+#[global_allocator]
+static ALLOCATOR: GlobalAllocator<Vmm> = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]
@@ -47,41 +46,18 @@ pub extern "C" fn kernel_main() {
     writeln!(crate::sbi::Sbi, "Hello from high-half!");
 
     let mut pmm = memory_manager::init_pmm(MEMORY_SIZE);
-    pmm.alloc();
 
-    writeln!(crate::sbi::Sbi, "alloc done");
-
-    loop {}
-}
-
-#[global_allocator]
-static ALLOCATOR: GlobalAllocator<Vmm> = GlobalAllocator::empty();
-
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".text")]
-pub extern "C" fn kernel_main_virtual() -> ! {
-    // runs at virtual address, after MMU is on
-
-    // Update trap vector to virtual address
     unsafe extern "C" {
-        fn trap_entry();
+        static _root_page_table_virt: u8;
     }
-    unsafe {
-        core::arch::asm!("csrw stvec, {}", in(reg) trap_entry);
-    }
+    let root_page_table_ptr = unsafe { &_root_page_table_virt } as *const u8;
+    let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+    root_page_table.add_page(&mut pmm); // reserve page starting at 0x0 because it will produce null-pointer
 
-    let setup_page_loc: usize;
-    unsafe {
-        core::arch::asm!("mv {setup_page_ptr}, t5", setup_page_ptr = out(reg) setup_page_loc);
-    }
+    let vmm = Vmm::new(pmm, root_page_table);
+    let heap = Heap::new(vmm);
 
-    // let (pmm, root_page_table) = read_setup_page(setup_page_loc);
-    // let vmm = Vmm::new(pmm, root_page_table);
-
-    // TODO: Remove identity mapping
-
-    // let heap = Heap::new(vmm);
-    // ALLOCATOR.init(heap);
+    ALLOCATOR.init(heap);
 
     shell::run();
 
