@@ -18,7 +18,7 @@ boot:
     j enable_virtual_memory
 
 init_page_table:
-    la t0, _free_memory_start    # load free memory pointer to t0, this will be the root page table pointer
+    la t0, _root_page_table    # load free memory pointer to t0, this will be the root page table pointer
 
     # clear the root PTE
     li t1, 0
@@ -28,7 +28,7 @@ init_page_table:
     addi t2, t2, -1
     bnez t2, 1b
 
-    la t0, _free_memory_start
+    la t0, _root_page_table
 
     # build the PTE for 0x80000000 (The physical RAM), and load it to t1
     # PPN = 0x80000000 >> 12 = 0x80000
@@ -47,7 +47,7 @@ init_page_table:
 
 enable_virtual_memory:
     # shift by 12 to get pnn
-    la t0, _free_memory_start
+    la t0, _root_page_table
     srli t0, t0, 12
 
     li t1, (8 << 60)
