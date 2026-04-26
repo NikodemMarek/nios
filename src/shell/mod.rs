@@ -4,35 +4,38 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{print, println, uart::Uart};
-
 enum Command {
     Echo(String),
     Exit,
 }
 
-pub fn run() {
-    fn write(buffer: &str) {
-        clear_line();
-        print!("> {}", buffer);
-    }
+pub fn run<I, O>(i: &mut I, o: &mut O)
+where
+    I: FnMut() -> u8,
+    O: core::fmt::Write + Copy,
+{
+    let mut write_o = *o;
+    let mut write = |buffer: &str| {
+        clear_line(&mut write_o);
+        write!(write_o, "> {}", buffer).unwrap();
+    };
 
     loop {
-        print!("> ");
-        let input = read_line(write);
-        println!();
+        write!(o, "> ").unwrap();
+        let input = read_line(i, &mut write);
+        writeln!(o).unwrap();
 
         let command = parse(&input);
         match command {
             Ok(command) => match command {
-                Command::Echo(message) => println!("{message}"),
+                Command::Echo(message) => writeln!(o, "{message}").unwrap(),
                 Command::Exit => {
-                    println!("exiting shell");
+                    writeln!(o, "exiting shell").unwrap();
                     break;
                 }
             },
             Err(err) => {
-                println!("{err}");
+                writeln!(o, "{err}").unwrap();
             }
         }
     }
@@ -51,11 +54,15 @@ fn parse(input: &str) -> Result<Command, String> {
     }
 }
 
-fn read_line(write: fn(&str)) -> String {
+fn read_line<I, O>(i: &mut I, write: &mut O) -> String
+where
+    O: FnMut(&str),
+    I: FnMut() -> u8,
+{
     let mut buffer = String::with_capacity(128);
 
     loop {
-        let char = Uart::read();
+        let char = i();
 
         match char {
             13 => {
@@ -74,10 +81,10 @@ fn read_line(write: fn(&str)) -> String {
     }
 }
 
-fn clear_line() {
-    print!("\r");
+fn clear_line(o: &mut impl core::fmt::Write) {
+    write!(o, "\r").unwrap();
     for _ in 0..200 {
-        print!(" ");
+        write!(o, " ").unwrap();
     }
-    print!("\r");
+    write!(o, "\r").unwrap();
 }

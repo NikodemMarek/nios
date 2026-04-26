@@ -59,7 +59,15 @@ pub extern "C" fn kernel_main() {
 
     ALLOCATOR.init(heap);
 
-    shell::run();
+    let mut incount = 0;
+    let mut i = || -> u8 {
+        if incount > 50 {
+            loop {}
+        }
+        incount += 1;
+        50
+    };
+    shell::run(&mut i, &mut sbi::Sbi);
 
     loop {}
 }

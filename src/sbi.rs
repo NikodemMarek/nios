@@ -33,6 +33,8 @@ fn print(s: &str) {
         sbi_call(byte as usize, 0, 0, 0, 0, 0, 0, 1);
     }
 }
+
+#[derive(Copy, Clone)]
 pub struct Sbi;
 impl core::fmt::Write for Sbi {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
