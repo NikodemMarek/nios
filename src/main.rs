@@ -44,14 +44,21 @@ pub extern "C" fn kernel_main() {
     let mut pmm = memory_manager::init_pmm(MEMORY_SIZE);
     let root_page_table = memory_manager::init_page_table(&mut pmm);
 
-    let vmm = Vmm::new(pmm, root_page_table);
-    let heap = Heap::new(vmm);
+    if cfg!(test) {
+        #[cfg(test)]
+        test_main();
 
-    ALLOCATOR.init(heap);
+        qemu::exit(qemu::ExitCode::Success);
+    } else {
+        let vmm = Vmm::new(pmm, root_page_table);
+        let heap = Heap::new(vmm);
 
-    shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
+        ALLOCATOR.init(heap);
 
-    loop {}
+        shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
+
+        loop {}
+    }
 }
 
 #[cfg(test)]

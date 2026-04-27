@@ -1,3 +1,5 @@
+use core::fmt::Write;
+
 core::arch::global_asm!(include_str!("traps.s"));
 
 #[repr(C)]
@@ -18,8 +20,6 @@ impl core::fmt::Display for TrapFrame {
 pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
     let is_exception = (scause >> 63) & 1 == 0;
     let cause_code = scause & 0x7fffffffffffffff;
-
-    use core::fmt::Write;
 
     if is_exception {
         let cause_str = match cause_code {
@@ -42,7 +42,8 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
         writeln!(
             crate::sbi::Sbi,
             "Exception trap called, cause: [{cause_code}] {cause_str} with value: {stval:#064b}"
-        );
+        )
+        .unwrap();
         todo!("handle exception")
     } else {
         let cause_str = match cause_code {
@@ -58,7 +59,8 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
         writeln!(
             crate::sbi::Sbi,
             "Interrupt trap called, cause: [{cause_code}] {cause_str}"
-        );
+        )
+        .unwrap();
         todo!("handle interrupt")
     }
 }

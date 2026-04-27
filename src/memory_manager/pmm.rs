@@ -1,5 +1,3 @@
-use core::fmt::Write;
-
 use crate::memory_manager::{MemoryManager, PAGE_SIZE};
 
 #[repr(C)]
@@ -174,20 +172,23 @@ fn init_bitmap(ptr: *mut u8, preoccupied_pages: usize, total_pages: usize) -> Bi
 
 #[cfg(test)]
 pub mod tests {
-    use crate::memory_manager::MemoryManager;
+    use crate::memory_manager::{MemoryManager, pmm::Sector};
 
     use super::{Bitmap, PAGE_SIZE, Pmm};
 
     pub fn setup_test_pmm() -> Pmm {
-        #[repr(align(4096))]
-        struct MockMemory([u8; PAGE_SIZE * 4]);
-        let mem = MockMemory([0; PAGE_SIZE * 4]);
+        static mut BITMAP: u64 = 0;
+        static MEMORY_BASE: u8 = 0;
 
-        let mut bitmap = [0u64; 1];
-        let bitmap_ptr = bitmap.as_mut_ptr();
-        Pmm {
-            bitmap: Bitmap::init_bitmap(bitmap_ptr as *mut u8, 0, 4),
-            memory_start_ptr: mem.0.as_ptr(),
+        unsafe {
+            BITMAP = 1; // bit 0 pre-occupied (bitmap storage)
+            Pmm {
+                bitmap: Bitmap {
+                    ptr: core::ptr::addr_of_mut!(BITMAP) as *mut Sector,
+                    total_pages: 4,
+                },
+                memory_start_ptr: core::ptr::addr_of!(MEMORY_BASE),
+            }
         }
     }
 
@@ -195,13 +196,13 @@ pub mod tests {
     fn test_alloc() {
         let mut pmm = setup_test_pmm();
 
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0001);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0001);
         pmm.alloc();
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0011);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0011);
         pmm.alloc();
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0111);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0111);
         pmm.alloc();
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b1111);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b1111);
 
         assert_eq!(pmm.alloc(), None);
     }
@@ -210,20 +211,20 @@ pub mod tests {
     fn test_free() {
         let mut pmm = setup_test_pmm();
 
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0001);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0001);
         let ptr1 = pmm.alloc().unwrap();
         pmm.alloc();
         let ptr2 = pmm.alloc().unwrap();
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b1111);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b1111);
         assert_eq!(pmm.alloc(), None);
 
         pmm.free(ptr2);
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0111);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0111);
         pmm.free(ptr1);
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b0101);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b0101);
 
         pmm.alloc();
         pmm.alloc();
-        assert_eq!(unsafe { *pmm.bitmap.ptr }, 0b1111);
+        assert_eq!(unsafe { *pmm.bitmap.ptr }.0, 0b1111);
     }
 }

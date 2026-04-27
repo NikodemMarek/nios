@@ -1,10 +1,4 @@
-{
-  pkgs,
-  lib,
-  config,
-  inputs,
-  ...
-}: {
+{pkgs, ...}: {
   # https://devenv.sh/packages/
   packages = [pkgs.qemu];
 
@@ -38,8 +32,9 @@
       -machine virt \
       -cpu rv64 \
       -nographic \
-      -bios none \
-      -kernel $TEST_BIN \
-      -serial mon:stdio
+      -bios default \
+      -serial mon:stdio \
+      --no-reboot \
+      -kernel $TEST_BIN
   '';
 }

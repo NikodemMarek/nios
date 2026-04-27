@@ -185,6 +185,10 @@ pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
     let mut l1_page_table = root_page_table.set_page_table::<PageTableLevelL1>(pmm, 508);
     l1_page_table.set_pte(128, PageTableEntry::leaf(0x10000000 as *const ()));
 
+    // create a mapping for qemu
+    let mut l0_page_table = l1_page_table.set_page_table::<PageTableLevelL0>(pmm, 0);
+    l0_page_table.set_pte(256, PageTableEntry::leaf(0x100000 as *const ()));
+
     unsafe {
         core::arch::asm!("sfence.vma zero, zero");
     }
@@ -208,77 +212,17 @@ mod tests {
     use super::*;
 
     #[test_case]
-    fn test_loc_to_slot() {
-        assert_eq!(loc_to_slot(0x00000000), 0);
-        assert_eq!(loc_to_slot(0x40000000), 1);
-        assert_eq!(loc_to_slot(KERNEL_OFFSET), 2);
-        assert_eq!(loc_to_slot(VIRT_BASE), 0x1FC);
-    }
-
-    #[test_case]
-    fn test_page_table_new() {
-        let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::existing(page_ptr, 0);
-
-        // Verify that the page table was created by testing SATP value
-        let satp = page_table.satp();
-        let ppn = satp & 0xFFFFFFFFFFF;
-        assert_eq!(ppn, 0x80000, "PPN in SATP should match page pointer");
-    }
-
-    #[test_case]
-    fn test_page_table_new_root_physical() {
-        let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
-
-        // Verify creation by checking SATP value
-        let satp = page_table.satp();
-        let ppn = satp & 0xFFFFFFFFFFF;
-        assert_eq!(ppn, 0x80000, "PPN should match page pointer");
-
-        // Verify physical offset by converting a pointer
-        let test_ptr = 0x1000 as *const ();
-        let converted = page_table.page_table_ptr(test_ptr);
-        assert_eq!(
-            converted as usize,
-            PHYS_BASE + 0x1000,
-            "should use physical base offset"
-        );
-    }
-
-    #[test_case]
-    fn test_page_table_new_root_virtual() {
-        let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, true);
-
-        // Verify creation by checking SATP value
-        let satp = page_table.satp();
-        let ppn = satp & 0xFFFFFFFFFFF;
-        assert_eq!(ppn, 0x80000, "PPN should match page pointer");
-
-        // Verify virtual offset by converting a pointer
-        let test_ptr = 0x1000 as *const ();
-        let converted = page_table.page_table_ptr(test_ptr);
-        assert_eq!(
-            converted as usize,
-            VIRT_BASE + 0x1000,
-            "should use virtual base offset"
-        );
-    }
-
-    #[test_case]
     fn test_satp_calculation() {
         let page_ptr = 0x80001000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
+        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         let satp = page_table.satp();
 
-        // SATP format for Sv39: MODE (bits 63:60) = 8, PPN (bits 43:0)
         let mode = (satp >> 60) & 0xF;
         let ppn = satp & 0xFFFFFFFFFFF;
 
-        assert_eq!(mode, 0b1000, "MODE field should be 8 for Sv39");
-        assert_eq!(ppn, 0x80001, "PPN should match the page pointer");
+        assert_eq!(mode, 0b1000);
+        assert_eq!(ppn, 0x80001);
     }
 
     #[test_case]
@@ -286,7 +230,7 @@ mod tests {
         // Allocate a page for the page table
         let mut page_table_storage = [PageTableEntry::empty(); 512];
         let page_ptr = page_table_storage.as_mut_ptr() as *const ();
-        let mut page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
+        let mut page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         // Initially should be empty/invalid
         let initial_pte = page_table.get_pte(0);
@@ -306,10 +250,10 @@ mod tests {
     fn test_page_table_free_index() {
         let mut page_table_storage = [PageTableEntry::empty(); 512];
         let page_ptr = page_table_storage.as_mut_ptr() as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
+        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         // All entries are empty, so first free should be 0
-        let free = page_table.free_index();
+        let free = page_table.get_free_index();
         assert_eq!(free, Some(0), "first free index should be 0");
     }
 
@@ -317,7 +261,7 @@ mod tests {
     fn test_page_table_free_index_partial() {
         let mut page_table_storage = [PageTableEntry::empty(); 512];
         let page_ptr = page_table_storage.as_mut_ptr() as *const ();
-        let mut page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
+        let mut page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         // Fill first few entries
         for i in 0..3 {
@@ -325,7 +269,7 @@ mod tests {
         }
 
         // Next free should be 3
-        let free = page_table.free_index();
+        let free = page_table.get_free_index();
         assert_eq!(free, Some(3), "first free index should be 3");
     }
 
@@ -333,7 +277,7 @@ mod tests {
     fn test_page_table_get_ptes_iterator() {
         let mut page_table_storage = [PageTableEntry::empty(); 512];
         let page_ptr = page_table_storage.as_mut_ptr() as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
+        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         // Count the entries without allocating
         let count = page_table.get_ptes().count();
@@ -341,34 +285,16 @@ mod tests {
     }
 
     #[test_case]
-    fn test_page_table_ptr_conversion() {
-        let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, false);
-
-        let phys_ptr = 0x80001000 as *const ();
-        let virt_ptr = page_table.page_table_ptr(phys_ptr);
-
-        // With PHYS_BASE offset, should be the same
-        assert_eq!(
-            virt_ptr as usize,
-            PHYS_BASE + phys_ptr as usize,
-            "should apply offset correctly"
-        );
+    fn test_get_phys_ptr() {
+        let virt = (0xffffffff00000000usize + 0x80001000) as *const ();
+        let phys = get_phys_ptr(virt);
+        assert_eq!(phys as usize, 0x80001000);
     }
 
     #[test_case]
-    fn test_page_table_ptr_conversion_virtual() {
-        let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr, true);
-
-        let phys_ptr = 0x80001000 as *const ();
-        let virt_ptr = page_table.page_table_ptr(phys_ptr);
-
-        // With VIRT_BASE offset, should add the high-half offset
-        assert_eq!(
-            virt_ptr as usize,
-            VIRT_BASE + phys_ptr as usize,
-            "should apply virtual offset correctly"
-        );
+    fn test_get_virt_ptr() {
+        let phys = 0x80001000 as *const ();
+        let virt = get_virt_ptr(phys);
+        assert_eq!(virt as usize, 0xffffffff00000000usize + 0x80001000);
     }
 }
