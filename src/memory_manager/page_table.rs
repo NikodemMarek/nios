@@ -97,31 +97,18 @@ impl<L: PageTableHasChildren> PageTable<L> {
             })?;
 
         match found {
-            Found::Empty(index) => Some(self.set_page_table(pmm, index)),
+            Found::Empty(index) => Some((index, self.set_page_table(pmm, index))),
             Found::NotFull(index, ptr) => Some((index, PageTable::<C>::existing(ptr))),
         }
     }
-    fn add_page_table<C>(&mut self, pmm: &mut Pmm) -> Option<(usize, PageTable<C>)> {
-        let free_index = self.get_free_index()?;
-
-        let page_table_ptr = pmm.alloc().expect("PMM out of pages");
-        let page_table_ptr = get_phys_ptr(page_table_ptr);
-        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
-
-        self.set_pte(free_index, page_table_pte);
-
-        let page_table = PageTable::<C>::new(page_table_ptr);
-        Some((free_index, page_table))
-    }
-    fn set_page_table<C>(&mut self, pmm: &mut Pmm, index: usize) -> (usize, PageTable<C>) {
+    fn set_page_table<C>(&mut self, pmm: &mut Pmm, index: usize) -> PageTable<C> {
         let page_table_ptr = pmm.alloc().expect("PMM out of pages");
         let page_table_ptr = get_phys_ptr(page_table_ptr);
         let page_table_pte = PageTableEntry::page_table(page_table_ptr);
 
         self.set_pte(index, page_table_pte);
 
-        let page_table = PageTable::<C>::new(page_table_ptr);
-        (index, page_table)
+        PageTable::<C>::new(page_table_ptr)
     }
 }
 
@@ -193,6 +180,15 @@ pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
     let root_page_table_ptr = unsafe { &_root_page_table_virt } as *const u8;
     let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
     root_page_table.add_page(pmm); // reserve page starting at 0x0 because it will produce null-pointer
+
+    // create a megapage mapping for UART
+    let mut l1_page_table = root_page_table.set_page_table::<PageTableLevelL1>(pmm, 508);
+    l1_page_table.set_pte(128, PageTableEntry::leaf(0x10000000 as *const ()));
+
+    unsafe {
+        core::arch::asm!("sfence.vma zero, zero");
+    }
+
     root_page_table
 }
 

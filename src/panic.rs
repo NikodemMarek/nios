@@ -1,17 +1,17 @@
-use core::panic::PanicInfo;
+use core::{fmt::Write, panic::PanicInfo};
 
-use crate::{println, qemu};
+use crate::{qemu, uart::Uart};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     if cfg!(test) {
-        println!("\x1b[31mFAILED\x1b[0m");
-        println!("Error: {}\n", info);
+        writeln!(Uart, "\x1b[31mFAILED\x1b[0m").unwrap();
+        writeln!(Uart, "Error: {}\n", info).unwrap();
 
         qemu::exit(qemu::ExitCode::Fail);
     } else {
-        println!("Kernel panicked: {}", info.message());
-        println!("             at: {}", info.location().unwrap());
+        writeln!(Uart, "Kernel panicked: {}", info.message()).unwrap();
+        writeln!(Uart, "             at: {}", info.location().unwrap()).unwrap();
 
         loop {}
     }

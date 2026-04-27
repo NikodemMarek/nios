@@ -1,13 +1,12 @@
-use core::fmt::Write;
-
+#[derive(Copy, Clone)]
 pub struct Uart;
 impl Uart {
     pub const OFFSET: usize = 0x10000000;
 
     // This is a test workaround, ideally UART should know it it is in the higher-half or not.
-    #[cfg(test)]
-    const ADDRESS: *mut u8 = Uart::OFFSET as *mut u8;
-    #[cfg(not(test))]
+    // #[cfg(test)]
+    // const ADDRESS: *mut u8 = Uart::OFFSET as *mut u8;
+    // #[cfg(not(test))]
     const ADDRESS: *mut u8 = (0xffffffff00000000 + Uart::OFFSET) as *mut u8;
 
     fn print(s: &str) {
@@ -31,28 +30,9 @@ impl Uart {
         unsafe { *Uart::ADDRESS }
     }
 }
-impl Write for Uart {
+impl core::fmt::Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         Uart::print(s);
         Ok(())
     }
-}
-
-pub fn _print(args: core::fmt::Arguments) {
-    use core::fmt::Write;
-    Uart.write_fmt(args).unwrap();
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => {{
-        $crate::uart::_print(format_args!($($arg)*));
-    }};
-}
-#[macro_export]
-macro_rules! println {
-    () => ($crate::print!("\n"));
-    ($($arg:tt)*) => {{
-        $crate::print!("{}\n", format_args!($($arg)*));
-    }};
 }

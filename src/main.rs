@@ -16,8 +16,6 @@ mod shell;
 mod traps;
 mod uart;
 
-use core::fmt::Write;
-
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
 use crate::memory_manager::Vmm;
@@ -43,8 +41,6 @@ pub extern "C" fn kernel_main() {
         );
     }
 
-    writeln!(crate::sbi::Sbi, "Hello from high-half!");
-
     let mut pmm = memory_manager::init_pmm(MEMORY_SIZE);
     let root_page_table = memory_manager::init_page_table(&mut pmm);
 
@@ -53,15 +49,7 @@ pub extern "C" fn kernel_main() {
 
     ALLOCATOR.init(heap);
 
-    let mut incount = 0;
-    let mut i = || -> u8 {
-        if incount > 50 {
-            loop {}
-        }
-        incount += 1;
-        50
-    };
-    shell::run(&mut i, &mut sbi::Sbi);
+    shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
 
     loop {}
 }

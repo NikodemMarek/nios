@@ -20,6 +20,10 @@ impl MemoryManager for Vmm {
         let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
         let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
 
+        unsafe {
+            core::arch::asm!("sfence.vma zero, zero");
+        }
+
         Some(virtual_address as *const ())
     }
 

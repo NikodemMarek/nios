@@ -1,19 +1,24 @@
-use crate::{print, println};
+use core::fmt::Write;
 
+use crate::uart::Uart;
+
+#[cfg(test)]
 pub trait Testable {
     fn run(&self);
 }
 
+#[cfg(test)]
 impl<T: Fn()> Testable for T {
     fn run(&self) {
-        print!("test {} ... ", core::any::type_name::<T>());
+        write!(Uart, "test {} ... ", core::any::type_name::<T>());
         self();
-        println!("\x1b[32mOK\x1b[0m");
+        writeln!(Uart, "\x1b[32mOK\x1b[0m");
     }
 }
 
+#[cfg(test)]
 pub fn test_runner(tests: &[&dyn Testable]) {
-    println!("Running {} tests", tests.len());
+    writeln!(Uart, "Running {} tests", tests.len());
     for test in tests {
         test.run();
     }
