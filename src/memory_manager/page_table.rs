@@ -7,16 +7,32 @@ struct PageTableLevelL1;
 #[derive(Copy, Clone)]
 struct PageTableLevelL0;
 
+pub(crate) trait PageTableHasChildren {}
+impl PageTableHasChildren for PageTableLevelRoot {}
+impl PageTableHasChildren for PageTableLevelL1 {}
+
 #[derive(Copy, Clone)]
 pub struct PageTable<PageTableLevel = PageTableLevelRoot> {
     level: core::marker::PhantomData<PageTableLevel>,
     ptr: *const PageTableEntry,
 }
+
 impl<L> PageTable<L> {
-    fn new(ptr: *const ()) -> Self {
+    fn existing(ptr: *const ()) -> Self {
         Self {
             level: core::marker::PhantomData,
             ptr: ptr as *const PageTableEntry,
+        }
+    }
+    fn new(ptr: *const ()) -> Self {
+        let ptr = ptr as *mut PageTableEntry;
+        for i in 0..512 {
+            unsafe { *ptr.add(i) = PageTableEntry::empty() };
+        }
+
+        Self {
+            level: core::marker::PhantomData,
+            ptr,
         }
     }
 
@@ -34,28 +50,22 @@ impl<L> PageTable<L> {
     fn get_ptes(&self) -> impl Iterator<Item = PageTableEntry> {
         (0..512).map(|i| self.get_pte(i))
     }
-    fn free_index(&self) -> Option<usize> {
+    fn get_free_index(&self) -> Option<usize> {
         self.get_ptes()
             .enumerate()
-            .find_map(|(i, pte)| (!pte.is_valid()).then_some(i))
+            .find(|(_, pte)| !pte.is_valid())
+            .map(|(i, _)| i)
     }
 
-    fn add_page_table(&mut self, pmm: &mut Pmm) -> Option<usize> {
-        let free_index = self.free_index()?;
-
-        let page_table_ptr = pmm.alloc().expect("PMM out of pages");
-        let page_table_ptr = get_ptr(page_table_ptr);
-        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
-
-        self.set_pte(free_index, page_table_pte);
-
-        Some(free_index)
+    fn is_full(&self) -> bool {
+        self.get_ptes().all(|pte| pte.is_valid())
     }
-    fn add_leaf_page(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
-        let free_index = self.free_index()?;
+
+    fn add_leaf(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
+        let free_index = self.get_free_index()?;
 
         let leaf_page_ptr = pmm.alloc().expect("PMM out of pages");
-        let leaf_page_ptr = get_ptr(leaf_page_ptr);
+        let leaf_page_ptr = get_phys_ptr(leaf_page_ptr);
         let leaf_page_pte = PageTableEntry::leaf(leaf_page_ptr);
 
         self.set_pte(free_index, leaf_page_pte);
@@ -63,9 +73,56 @@ impl<L> PageTable<L> {
         Some(free_index)
     }
 }
+impl<L: PageTableHasChildren> PageTable<L> {
+    fn get_empty_or_non_full_child_page_table<C>(
+        &mut self,
+        pmm: &mut Pmm,
+    ) -> Option<(usize, PageTable<C>)> {
+        enum Found {
+            Empty(usize),
+            NotFull(usize, *const ()),
+        }
 
-fn get_ptr(ptr: *const ()) -> *const () {
-    (ptr as usize - 0xffffffff00000000) as *const ()
+        let found = self
+            .get_ptes()
+            .enumerate()
+            .filter(|(_, pte)| !pte.is_leaf())
+            .find_map(|(index, pte)| {
+                if !pte.is_valid() {
+                    return Some(Found::Empty(index));
+                }
+                let ptr = get_virt_ptr(pte.page_ptr());
+                let page_table = PageTable::<C>::existing(ptr);
+                (!page_table.is_full()).then_some(Found::NotFull(index, ptr))
+            })?;
+
+        match found {
+            Found::Empty(index) => Some(self.set_page_table(pmm, index)),
+            Found::NotFull(index, ptr) => Some((index, PageTable::<C>::existing(ptr))),
+        }
+    }
+    fn add_page_table<C>(&mut self, pmm: &mut Pmm) -> Option<(usize, PageTable<C>)> {
+        let free_index = self.get_free_index()?;
+
+        let page_table_ptr = pmm.alloc().expect("PMM out of pages");
+        let page_table_ptr = get_phys_ptr(page_table_ptr);
+        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
+
+        self.set_pte(free_index, page_table_pte);
+
+        let page_table = PageTable::<C>::new(page_table_ptr);
+        Some((free_index, page_table))
+    }
+    fn set_page_table<C>(&mut self, pmm: &mut Pmm, index: usize) -> (usize, PageTable<C>) {
+        let page_table_ptr = pmm.alloc().expect("PMM out of pages");
+        let page_table_ptr = get_phys_ptr(page_table_ptr);
+        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
+
+        self.set_pte(index, page_table_pte);
+
+        let page_table = PageTable::<C>::new(page_table_ptr);
+        (index, page_table)
+    }
 }
 
 impl PageTable<PageTableLevelRoot> {
@@ -81,72 +138,36 @@ impl PageTable<PageTableLevelRoot> {
         (0b1000u64 << 60) | ppn
     }
 
-    pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<(usize, usize, usize)> {
-        let l1_add_page_result = self
-            .get_ptes()
-            .enumerate()
-            .filter(|(_, pte)| pte.is_valid() && !pte.is_leaf())
-            .find_map(|(i, pte)| {
-                // PTEs store physical addresses; convert to virtual to access the page table.
-                let l1_page_table_ptr = pte.page_ptr();
-                let mut l1_page_table = PageTable::<PageTableLevelL1>::new(l1_page_table_ptr);
-
-                l1_page_table.add_page(pmm).map(|p| (i, p.0, p.1))
-            });
-
-        if l1_add_page_result.is_some() {
-            return l1_add_page_result;
-        }
-
-        // allocate new page for page table on this level
-        let new_l1_page_index = self.add_page_table(pmm)?;
-        let new_l1_page_pte = self.get_pte(new_l1_page_index);
-
-        let mut new_l1_page = PageTable::<PageTableLevelL1>::new(new_l1_page_pte.page_ptr());
-        let l1_add_page_result = new_l1_page
-            .add_page(pmm)
-            .expect("new page table cannot be full");
-
-        Some((
-            new_l1_page_index,
-            l1_add_page_result.0,
-            l1_add_page_result.1,
-        ))
+    pub fn add_gigapage(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
+        self.add_leaf(pmm)
+    }
+    pub fn add_megapage(&mut self, pmm: &mut super::Pmm) -> Option<(usize, usize)> {
+        let (l2_index, mut l1_page_table) =
+            self.get_empty_or_non_full_child_page_table::<PageTableLevelL1>(pmm)?;
+        let l1_index = l1_page_table.add_megapage(pmm)?;
+        Some((l2_index, l1_index))
+    }
+    pub fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<(usize, usize, usize)> {
+        let (l2_index, mut l1_page_table) =
+            self.get_empty_or_non_full_child_page_table::<PageTableLevelL1>(pmm)?;
+        let (l1_index, l0_index) = l1_page_table.add_page(pmm)?;
+        Some((l2_index, l1_index, l0_index))
     }
 }
 impl PageTable<PageTableLevelL1> {
-    fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<(usize, usize)> {
-        let l0_add_page_result = self
-            .get_ptes()
-            .enumerate()
-            .filter(|(_, pte)| pte.is_valid() && !pte.is_leaf())
-            .find_map(|(i, pte)| {
-                // PTEs store physical addresses; convert to virtual to access the page table.
-                let l0_page_table_ptr = pte.page_ptr();
-                let mut l0_page_table = PageTable::<PageTableLevelL0>::new(l0_page_table_ptr);
-
-                l0_page_table.add_page(pmm).map(|p| (i, p))
-            });
-
-        if l0_add_page_result.is_some() {
-            return l0_add_page_result;
-        }
-
-        // allocate new page for page table on this level
-        let new_l0_page_index = self.add_page_table(pmm)?;
-        let new_l0_page_pte = self.get_pte(new_l0_page_index);
-
-        let mut new_l0_page = PageTable::<PageTableLevelL0>::new(new_l0_page_pte.page_ptr());
-        let l0_page_index = new_l0_page
-            .add_page(pmm)
-            .expect("new page table cannot be full");
-
-        Some((new_l0_page_index, l0_page_index))
+    pub fn add_megapage(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
+        self.add_leaf(pmm)
+    }
+    pub fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<(usize, usize)> {
+        let (l1_index, mut l0_page_table) =
+            self.get_empty_or_non_full_child_page_table::<PageTableLevelL0>(pmm)?;
+        let l0_index = l0_page_table.add_page(pmm)?;
+        Some((l1_index, l0_index))
     }
 }
 impl PageTable<PageTableLevelL0> {
-    fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
-        self.add_leaf_page(pmm)
+    pub fn add_page(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
+        self.add_leaf(pmm)
     }
 }
 impl<L> core::fmt::Display for PageTable<L> {
@@ -155,6 +176,24 @@ impl<L> core::fmt::Display for PageTable<L> {
             .enumerate()
             .try_for_each(|(i, pte)| writeln!(f, "{:#x}: {}", self.ptr as usize + i, pte))
     }
+}
+
+fn get_phys_ptr(ptr: *const ()) -> *const () {
+    (ptr as usize - 0xffffffff00000000) as *const ()
+}
+fn get_virt_ptr(page_ptr: *const ()) -> *const () {
+    (page_ptr as usize + 0xffffffff00000000) as *const ()
+}
+
+pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
+    unsafe extern "C" {
+        static _root_page_table_virt: u8;
+    }
+
+    let root_page_table_ptr = unsafe { &_root_page_table_virt } as *const u8;
+    let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+    root_page_table.add_page(pmm); // reserve page starting at 0x0 because it will produce null-pointer
+    root_page_table
 }
 
 // const fn loc_to_slot(loc: usize) -> usize {
@@ -183,7 +222,7 @@ mod tests {
     #[test_case]
     fn test_page_table_new() {
         let page_ptr = 0x80000000 as *const ();
-        let page_table = PageTable::<PageTableLevelRoot>::new(page_ptr, 0);
+        let page_table = PageTable::<PageTableLevelRoot>::existing(page_ptr, 0);
 
         // Verify that the page table was created by testing SATP value
         let satp = page_table.satp();

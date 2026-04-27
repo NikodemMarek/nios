@@ -20,7 +20,7 @@ use core::fmt::Write;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::{PageTable, Vmm};
+use crate::memory_manager::Vmm;
 
 core::arch::global_asm!(include_str!("bootloader.s"));
 
@@ -46,13 +46,7 @@ pub extern "C" fn kernel_main() {
     writeln!(crate::sbi::Sbi, "Hello from high-half!");
 
     let mut pmm = memory_manager::init_pmm(MEMORY_SIZE);
-
-    unsafe extern "C" {
-        static _root_page_table_virt: u8;
-    }
-    let root_page_table_ptr = unsafe { &_root_page_table_virt } as *const u8;
-    let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
-    root_page_table.add_page(&mut pmm); // reserve page starting at 0x0 because it will produce null-pointer
+    let root_page_table = memory_manager::init_page_table(&mut pmm);
 
     let vmm = Vmm::new(pmm, root_page_table);
     let heap = Heap::new(vmm);
