@@ -34,6 +34,15 @@ fn print(s: &str) {
     }
 }
 
+pub fn set_timer(stime_value: u64) {
+    sbi_call(stime_value as usize, 0, 0, 0, 0, 0, 0, 0x54494D45);
+}
+pub fn read_time() -> u64 {
+    let t: u64;
+    unsafe { core::arch::asm!("rdtime {}", out(reg) t) };
+    t
+}
+
 #[derive(Copy, Clone)]
 pub struct Sbi;
 impl core::fmt::Write for Sbi {

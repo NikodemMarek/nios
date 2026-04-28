@@ -34,15 +34,27 @@ pub extern "C" fn kernel_main() {
         fn trap_entry();
     }
     unsafe {
+        // set trap entry
         core::arch::asm!(
             "csrw stvec, {0}",
             "csrw sscratch, zero",
-            in(reg) trap_entry as usize,
+            in(reg) trap_entry as *const (),
         );
     }
 
     let mut pmm = memory_manager::init_pmm(MEMORY_SIZE);
     let root_page_table = memory_manager::init_page_table(&mut pmm);
+
+    unsafe {
+        // enable timer interrupts
+        // clear a default interrupt set to 0 (fires immidiately)
+        sbi::set_timer(u64::MAX);
+        core::arch::asm!(
+            "csrs sie, {stie}",
+            "csrsi sstatus, 0x2",
+            stie = in(reg) 0x20usize,
+        );
+    }
 
     if cfg!(test) {
         #[cfg(test)]
@@ -54,6 +66,8 @@ pub extern "C" fn kernel_main() {
         let heap = Heap::new(vmm);
 
         ALLOCATOR.init(heap);
+
+        crate::sbi::set_timer(crate::sbi::read_time() + 50_000_000); // ~5s at 10MHz timebase
 
         shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
 
