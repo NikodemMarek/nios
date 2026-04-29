@@ -17,7 +17,11 @@ Goal is to build features incrementally, making sure it just works, improving la
   - [x] Command parser (tokenize input)
   - [x] Built-in commands
 - [x] Virtual Memory and Paging
-- [ ] Multitasking and Context Switching (optional)
+- [ ] Multitasking and Context Switching
+  - [x] Hardware timer
+  - [x] Timer interrupt handler
+  - [ ] Process queue
+  - [ ] Context switch
 
 ### Running
 
@@ -38,9 +42,10 @@ qemu-system-riscv64 \
   -machine virt \
   -cpu rv64 \
   -nographic \
-  -bios none \
-  -kernel target/riscv64gc-unknown-none-elf/debug/nios \
-  -serial mon:stdio
+  -bios default \
+  -serial mon:stdio \
+  --no-reboot \
+  -kernel target/riscv64gc-unknown-none-elf/debug/nios
 ```
 
 #### Running tests
@@ -62,9 +67,10 @@ qemu-system-riscv64 \
   -machine virt \
   -cpu rv64 \
   -nographic \
-  -bios none \
-  -kernel $TEST_BIN \
-  -serial mon:stdio
+  -bios default \
+  -serial mon:stdio \
+  --no-reboot \
+  -kernel $TEST_BIN
 ```
 
 Those tests need to run on RISC-V machine, therefore vm is required for testing.
