@@ -58,6 +58,11 @@ enable_virtual_memory:
     csrw satp, t0
     sfence.vma
 
+    # move the stack pointer to the higher-half
+    li t0, 0xffffffff00000000
+    add sp, sp, t0
+
+    # jump to the higher-half
     la t0, _kernel_main_vma
     ld a0, 0(t0)
     jr a0

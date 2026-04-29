@@ -189,23 +189,15 @@ pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
     let mut l0_page_table = l1_page_table.set_page_table::<PageTableLevelL0>(pmm, 0);
     l0_page_table.set_pte(256, PageTableEntry::leaf(0x100000 as *const ()));
 
+    // remove identity mapping
+    root_page_table.set_pte(2, PageTableEntry::empty());
+
     unsafe {
         core::arch::asm!("sfence.vma zero, zero");
     }
 
     root_page_table
 }
-
-// const fn loc_to_slot(loc: usize) -> usize {
-//     (loc >> 30) & 0b111111111
-// }
-//
-// pub fn remove_kernel_identity_map(root_page_table: &mut PageTable<PageTableLevelRoot>) {
-//     let identity_slot = loc_to_slot(KERNEL_OFFSET);
-//
-//     let empty_pte = PageTableEntry::empty();
-//     root_page_table.set_pte(identity_slot, empty_pte);
-// }
 
 #[cfg(test)]
 mod tests {
