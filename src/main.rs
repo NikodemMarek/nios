@@ -12,6 +12,7 @@ mod memory_manager;
 mod panic;
 mod qemu;
 mod sbi;
+mod scheduler;
 mod shell;
 mod traps;
 mod uart;
@@ -21,6 +22,7 @@ use core::cell::{RefCell, RefMut};
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
 use crate::memory_manager::Vmm;
+use crate::scheduler::Scheduler;
 
 core::arch::global_asm!(include_str!("bootloader.s"));
 
@@ -70,6 +72,9 @@ pub extern "C" fn kernel_main() {
         ALLOCATOR.init(heap);
         STATE.init();
 
+        STATE.get().add(shell as *const () as usize);
+        STATE.get().add(dummy_program as *const () as usize);
+
         // start the interrupts immidiately
         crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
 
@@ -79,7 +84,7 @@ pub extern "C" fn kernel_main() {
 
 static STATE: KernelState = KernelState::empty();
 
-struct KernelState(RefCell<Option<State>>);
+struct KernelState(RefCell<Option<Scheduler>>);
 impl KernelState {
     #[inline]
     pub const fn empty() -> Self {
@@ -87,46 +92,23 @@ impl KernelState {
     }
     #[inline]
     pub fn init(&self) {
-        *self.0.borrow_mut() = Some(State::new());
+        *self.0.borrow_mut() = Some(Scheduler::new());
     }
 
     #[inline]
-    fn get(&self) -> RefMut<'_, State> {
+    fn get(&self) -> RefMut<'_, Scheduler> {
         RefMut::map(self.0.borrow_mut(), |mi| {
             mi.as_mut().expect("Kernel state not initialized")
         })
     }
 
     fn switch_task(&self) -> *const () {
-        let next_program_ptr = {
-            let mut state = self.get();
-            state.next()
-        };
-
         crate::sbi::set_timer(crate::sbi::read_time() + 50_000_000);
-        next_program_ptr
+        self.get().next().expect("No programs left to execute!") as *const ()
     }
 }
 unsafe impl Send for KernelState {}
 unsafe impl Sync for KernelState {}
-
-struct State {
-    current_program: usize,
-    programs: [usize; 2],
-}
-impl State {
-    fn new() -> Self {
-        Self {
-            current_program: 0,
-            programs: [dummy_program as usize, shell as usize],
-        }
-    }
-
-    fn next(&mut self) -> *const () {
-        self.current_program = if self.current_program == 1 { 0 } else { 1 };
-        self.programs[self.current_program] as *const ()
-    }
-}
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]
