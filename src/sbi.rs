@@ -34,9 +34,15 @@ fn print(s: &str) {
     }
 }
 
+#[inline(always)]
 pub fn set_timer(stime_value: u64) {
     sbi_call(stime_value as usize, 0, 0, 0, 0, 0, 0, 0x54494D45);
 }
+#[inline(always)]
+pub fn reset_timer() {
+    set_timer(u64::MAX);
+}
+#[inline(always)]
 pub fn read_time() -> u64 {
     let t: u64;
     unsafe { core::arch::asm!("rdtime {}", out(reg) t) };

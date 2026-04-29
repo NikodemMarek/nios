@@ -17,7 +17,7 @@ impl core::fmt::Display for TrapFrame {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
+pub extern "C" fn trap_handler(tf: &mut TrapFrame, scause: u64, stval: u64) {
     let is_exception = (scause >> 63) & 1 == 0;
     let cause_code = scause & 0x7fffffffffffffff;
 
@@ -49,7 +49,12 @@ pub extern "C" fn trap_handler(_tf: &mut TrapFrame, scause: u64, stval: u64) {
         let cause_str = match cause_code {
             1 => "Supervisor Software Interrupt",
             3 => "Machine Software Interrupt",
-            5 => "Supervisor Timer Interrupt",
+            5 => {
+                crate::sbi::reset_timer();
+                let next_program_ptr = crate::STATE.switch_task();
+                tf.sepc = next_program_ptr as u64;
+                return;
+            }
             7 => "Machine Timer Interrupt",
             9 => "Supervisor External Interrupt",
             11 => "Machine External Interrupt",
