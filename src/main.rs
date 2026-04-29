@@ -69,10 +69,25 @@ pub extern "C" fn kernel_main() {
 
         crate::sbi::set_timer(crate::sbi::read_time() + 50_000_000); // ~5s at 10MHz timebase
 
-        shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
+        run_program(shell as *const ());
 
         loop {}
     }
+}
+
+fn run_program(program_ptr: *const ()) {
+    unsafe {
+        core::arch::asm!(
+            "jr {process}",
+            process = in(reg) program_ptr,
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text")]
+pub extern "C" fn shell() {
+    shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
 }
 
 #[cfg(test)]
