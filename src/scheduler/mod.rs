@@ -1,27 +1,46 @@
+use crate::{
+    memory_manager::{MemoryManager, Vmm},
+    traps::TrapFrame,
+};
+
 const MAX_PROGRAMS_COUNT: usize = 20;
 
 pub struct Scheduler {
-    current_program: usize,
+    pub current_program: usize,
     programs_count: usize,
-    programs: [usize; MAX_PROGRAMS_COUNT],
+    programs: [TrapFrame; MAX_PROGRAMS_COUNT],
 }
 impl Scheduler {
     pub fn new() -> Self {
         Self {
-            current_program: 0,
+            // Kernel jumps to the trap for the first time, with its own state, so we just discard
+            // it's state to some high location.
+            current_program: 19,
             programs_count: 0,
             programs: Default::default(),
         }
     }
 
-    pub fn add(&mut self, program_loc: usize) {
+    pub fn add(&mut self, mm: &mut Vmm, program_loc: usize) {
         assert!(
             self.programs_count < MAX_PROGRAMS_COUNT,
             "Implementation constraint surpassed, too many programs loaded to scheduler!"
         );
 
-        self.programs[self.programs_count] = program_loc;
+        let stack_page_ptr = mm.alloc().expect("MM out of pages");
+        self.programs[self.programs_count] = TrapFrame {
+            sp: stack_page_ptr as u64,
+            sepc: program_loc as u64,
+            ..Default::default()
+        };
         self.programs_count += 1;
+    }
+
+    pub fn save(&mut self, process_number: usize, tf: &TrapFrame) {
+        self.programs[process_number] = tf.clone();
+    }
+    pub fn restore(&mut self, process_number: usize, tf: &mut TrapFrame) {
+        *tf = self.programs[process_number].clone();
     }
 }
 impl Iterator for Scheduler {
@@ -38,6 +57,6 @@ impl Iterator for Scheduler {
             0
         };
 
-        Some(self.programs[self.current_program])
+        Some(self.current_program)
     }
 }

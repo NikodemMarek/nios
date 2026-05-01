@@ -111,8 +111,9 @@ restore_regs:
     ld x30, 232(sp)
     ld x31, 240(sp)
 
-    ld t0, 248(sp)
+    ld t0,  248(sp)
     csrw sepc, t0
+    ld t0,  32(sp)
 
     ld x2,  8(sp)
     sret

@@ -66,14 +66,16 @@ pub extern "C" fn kernel_main() {
 
         qemu::exit(qemu::ExitCode::Success);
     } else {
-        let vmm = Vmm::new(pmm, root_page_table);
+        let mut vmm = Vmm::new(pmm, root_page_table);
         let heap = Heap::new(vmm);
 
         ALLOCATOR.init(heap);
         STATE.init();
 
-        STATE.get().add(shell as *const () as usize);
-        STATE.get().add(dummy_program as *const () as usize);
+        STATE
+            .get()
+            .add(&mut vmm, dummy_program as *const () as usize);
+        STATE.get().add(&mut vmm, shell as *const () as usize);
 
         // start the interrupts immidiately
         crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
@@ -102,9 +104,16 @@ impl KernelState {
         })
     }
 
-    fn switch_task(&self) -> *const () {
-        crate::sbi::set_timer(crate::sbi::read_time() + 50_000_000);
-        self.get().next().expect("No programs left to execute!") as *const ()
+    fn switch_task(&self, tf: &mut traps::TrapFrame) {
+        let mut scheduler = self.get();
+
+        let process_number = scheduler.current_program;
+        scheduler.save(process_number, tf);
+
+        let next_process = scheduler.next().expect("No process left to execute!");
+        scheduler.restore(next_process, tf);
+
+        crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
     }
 }
 unsafe impl Send for KernelState {}
@@ -125,9 +134,7 @@ pub extern "C" fn dummy_program() {
         "hey I'm a dummy program! I'll scream until you stop me"
     )
     .unwrap();
-    loop {
-        write!(crate::sbi::Sbi, "A").unwrap();
-    }
+    loop {}
 }
 
 #[cfg(test)]
