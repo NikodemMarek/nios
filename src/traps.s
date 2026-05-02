@@ -10,27 +10,30 @@ trap_entry:
 
 from_supervisor_mode:
     csrr sp, sscratch
-    addi sp, sp, -256
+    addi sp, sp, -272
 
-    addi t0, sp, 256
-    sd t0, 8(sp)
+    sd x5, 32(sp)
+
+    addi x5, sp, 272
+    sd x5, 8(sp)
 
     j save_regs
 
 from_user_mode:
-    addi sp, sp, -256
+    addi sp, sp, -272
 
-    // store the U-mode stack pointer
-    csrr t0, sscratch
-    sd t0, 8(sp)
+    sd x5, 32(sp)
+
+    csrr x5, sscratch
+    sd x5, 8(sp)
 
 save_regs:
     // store registers in the trap frame
     sd x1, 0(sp)
-    // x2 aka sp is already saved (see from_supervisor_mode and from_user_mode)
+    // x2/sp is already saved (see from_supervisor_mode and from_user_mode)
     sd x3,  16(sp)
     sd x4,  24(sp)
-    sd x5,  32(sp)
+    // x5/t0 is already saved
     sd x6,  40(sp)
     sd x7,  48(sp)
     sd x8,  56(sp)
@@ -61,6 +64,9 @@ save_regs:
     csrr t0, sepc
     sd t0, 248(sp)
 
+    csrr t0, sstatus
+    sd t0, 256(sp)
+
 handle_trap:
     // move the machine cause to function argument, and call the trap handler
     mv a0, sp
@@ -69,21 +75,26 @@ handle_trap:
     call trap_handler
 
 restore:
-    csrr t0, sstatus
+    ld t0, 256(sp)
+    csrw sstatus, t0
 
     // if bit 8 was not 0, we were in S-mode
     andi t0, t0, 0x100
-    bnez t0, restore_regs
+    bnez t0, restore_from_s
 
 restore_from_u:
-    addi t0, sp, 256
+    addi t0, sp, 272
     csrw sscratch, t0
+    j restore_regs
+
+restore_from_s:
+    csrw sscratch, zero
 
 restore_regs:
     ld x1,  0(sp)
     ld x3,  16(sp)
     ld x4,  24(sp)
-    ld x5,  32(sp)
+    // x5/t0 will be restored later
     ld x6,  40(sp)
     ld x7,  48(sp)
     ld x8,  56(sp)
@@ -113,7 +124,7 @@ restore_regs:
 
     ld t0,  248(sp)
     csrw sepc, t0
-    ld t0,  32(sp)
 
+    ld t0,  32(sp)
     ld x2,  8(sp)
     sret

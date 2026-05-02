@@ -28,9 +28,13 @@ impl Scheduler {
         );
 
         let stack_page_ptr = mm.alloc().expect("MM out of pages");
+        let stack_page_ptr =
+            unsafe { (stack_page_ptr as *const u8).add(crate::memory_manager::PAGE_SIZE) };
+
         self.programs[self.programs_count] = TrapFrame {
             sp: stack_page_ptr as u64,
             sepc: program_loc as u64,
+            sstatus: 0b100100000, // SPP = 1 (Supervisor), SPIE = 1 (Enable interrupts on sret)
             ..Default::default()
         };
         self.programs_count += 1;

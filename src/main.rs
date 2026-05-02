@@ -18,6 +18,7 @@ mod traps;
 mod uart;
 
 use core::cell::{RefCell, RefMut};
+use core::fmt::Write;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
@@ -113,7 +114,7 @@ impl KernelState {
         let next_process = scheduler.next().expect("No process left to execute!");
         scheduler.restore(next_process, tf);
 
-        crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
+        crate::sbi::set_timer(crate::sbi::read_time() + 10_000);
     }
 }
 unsafe impl Send for KernelState {}
@@ -128,12 +129,9 @@ pub extern "C" fn shell() {
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]
 pub extern "C" fn dummy_program() {
-    use core::fmt::Write;
-    writeln!(
-        crate::sbi::Sbi,
-        "hey I'm a dummy program! I'll scream until you stop me"
-    )
-    .unwrap();
+    crate::uart::Uart
+        .write_str("Dummy program started!\n")
+        .unwrap();
     loop {}
 }
 

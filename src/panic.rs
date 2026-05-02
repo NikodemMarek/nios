@@ -10,7 +10,8 @@ fn panic(info: &PanicInfo) -> ! {
 
         qemu::exit(qemu::ExitCode::Fail);
     } else {
-        writeln!(Uart, "Kernel panicked: {}", info.message()).unwrap();
+        writeln!(Uart).unwrap();
+        writeln!(Uart, "Kernel panicked! {}", info.message()).unwrap();
         writeln!(Uart, "             at: {}", info.location().unwrap()).unwrap();
 
         loop {}

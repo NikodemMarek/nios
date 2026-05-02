@@ -16,6 +16,8 @@ pub struct TrapFrame {
     pub s2_s11: [u64; 10],
     pub t3_t6: [u64; 4],
     pub sepc: u64,
+    pub sstatus: u64,
+    pub _padding: u64,
 }
 impl core::fmt::Display for TrapFrame {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -67,7 +69,9 @@ pub extern "C" fn trap_handler(tf: &mut TrapFrame, scause: u64, stval: u64) {
         let cause_str = match cause_code {
             0 => "Instruction Address Misaligned",
             1 => "Instruction Access Fault",
-            2 => "Illegal Instruction",
+            2 => {
+                panic!("Illegal Instruction - {stval:#064b}")
+            }
             3 => "Breakpoint",
             4 => "Load Address Misaligned",
             5 => "Load Access Fault",
@@ -79,22 +83,13 @@ pub extern "C" fn trap_handler(tf: &mut TrapFrame, scause: u64, stval: u64) {
             12 => "Instruction Page Fault",
             13 => "Load Page Fault",
             15 => {
-                writeln!(
-                    crate::sbi::Sbi,
-                    "Kernel panic! Unhandled Store Page Fault - tried to write to pointer {:#x}",
-                    stval
-                )
-                .unwrap();
-                return;
+                panic!("Unhandled Store Page Fault - tried to write to {stval:#x}");
             }
             _ => "Unknown",
         };
-        writeln!(
-            crate::sbi::Sbi,
-            "Exception trap called, cause: [{cause_code}] {cause_str} with value: {stval:#064b}"
-        )
-        .unwrap();
-        todo!("handle exception")
+        panic!(
+            "Unhandled exception trap, cause: [{cause_code}] {cause_str} with value: {stval:#064b}"
+        );
     } else {
         let cause_str = match cause_code {
             1 => "Supervisor Software Interrupt",
@@ -112,11 +107,6 @@ pub extern "C" fn trap_handler(tf: &mut TrapFrame, scause: u64, stval: u64) {
             _ => "Unknown",
         };
 
-        writeln!(
-            crate::sbi::Sbi,
-            "Interrupt trap called, cause: [{cause_code}] {cause_str}"
-        )
-        .unwrap();
-        todo!("handle interrupt")
+        panic!("Unhandled interrupt trap, cause: [{cause_code}] {cause_str}");
     }
 }
