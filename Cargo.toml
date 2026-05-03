@@ -1,11 +1,6 @@
-[package]
-name = "nios"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "2"
 
-[[bin]]
-name = "nios"
-test = true
-bench = false
-
-[dependencies]
+members = [
+    "kernel"
+]

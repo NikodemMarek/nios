@@ -21,7 +21,7 @@
       -bios default \
       -serial mon:stdio \
       --no-reboot \
-      -kernel target/riscv64gc-unknown-none-elf/debug/nios
+      -kernel target/riscv64gc-unknown-none-elf/debug/nios-kernel
   '';
 
   scripts.check.exec = ''

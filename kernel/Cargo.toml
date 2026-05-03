@@ -1,0 +1,11 @@
+[package]
+name = "nios-kernel"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "nios-kernel"
+test = true
+bench = false
+
+[dependencies]
