@@ -103,8 +103,8 @@ impl<L: PageTableHasChildren> PageTable<L> {
     }
     fn set_page_table<C>(&mut self, pmm: &mut Pmm, index: usize) -> PageTable<C> {
         let page_table_ptr = pmm.alloc().expect("PMM out of pages");
-        let page_table_ptr = get_phys_ptr(page_table_ptr);
-        let page_table_pte = PageTableEntry::page_table(page_table_ptr);
+        let phys_page_table_ptr = get_phys_ptr(page_table_ptr);
+        let page_table_pte = PageTableEntry::page_table(phys_page_table_ptr);
 
         self.set_pte(index, page_table_pte);
 
