@@ -108,8 +108,7 @@ impl KernelState {
     fn switch_task(&self, tf: &mut traps::TrapFrame) {
         let mut scheduler = self.get();
 
-        let process_number = scheduler.current_program;
-        scheduler.save(process_number, tf);
+        scheduler.save(tf);
 
         let next_process = scheduler.next().expect("No process left to execute!");
         scheduler.restore(next_process, tf);
