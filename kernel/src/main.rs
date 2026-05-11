@@ -22,13 +22,13 @@ use core::fmt::Write;
 
 use crate::global_allocator::GlobalAllocator;
 use crate::heap::Heap;
-use crate::memory_manager::Vmm;
+use crate::memory_manager::{Pmm, Vmm};
 use crate::scheduler::Scheduler;
 
 core::arch::global_asm!(include_str!("bootloader.s"));
 
 #[global_allocator]
-static ALLOCATOR: GlobalAllocator<Vmm> = GlobalAllocator::empty();
+static ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text")]

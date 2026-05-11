@@ -6,7 +6,7 @@ use crate::{
         block::{Block, try_split_block},
         header::{Header, HeadersIterator},
     },
-    memory_manager::{MemoryManager, PAGE_SIZE},
+    memory_manager::{MemoryManager, PAGE_SIZE, Vmm},
 };
 
 fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {
@@ -15,14 +15,14 @@ fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {
 }
 
 const PAGES_FOR_ALLOC: usize = 20; // Who needs more than 20 pages, lol
-pub struct Heap<M: MemoryManager> {
-    mm: M,
+pub struct Heap {
+    mm: Vmm,
     allocated_pages: usize,
     pages: [*const u8; PAGES_FOR_ALLOC],
 }
-impl<M: MemoryManager> Heap<M> {
-    pub fn new(mut mm: M) -> Self {
-        let initial_page = Self::request_page(&mut mm);
+impl Heap {
+    pub fn new(mut mm: Vmm) -> Self {
+        let initial_page = Self::request_page(&mut mm, 0);
         let initial_block_header = Header::from_ptr(initial_page as *const Header);
         let initial_block = Block::occupied(
             initial_page as *const u8,
@@ -132,16 +132,20 @@ impl<M: MemoryManager> Heap<M> {
             "Implementation constraint surpassed, too many pages allocated for heap!"
         );
 
-        let page_ptr = Heap::request_page(&mut self.mm) as *const u8;
+        let page_ptr = Heap::request_page(&mut self.mm, self.allocated_pages) as *const u8;
         self.pages[self.allocated_pages] = page_ptr;
         self.allocated_pages += 1;
         page_ptr
     }
 
-    fn request_page(mm: &mut M) -> *const () {
-        let Some(page_ptr) = mm.alloc() else {
-            panic!("MM run out of free pages");
-        };
+    fn request_page(mm: &mut Vmm, page_number: usize) -> *const () {
+        // let Some(page_ptr) = mm.alloc() else {
+        //     panic!("MM run out of free pages");
+        // };
+        // Mapped to higher-half kernel space.
+        // TODO: Move to it's own space.
+        let page_ptr = 0xffffffff80300000 + page_number * PAGE_SIZE;
+        let page_ptr = page_ptr as *const ();
 
         // Create initial free block on a page, that spans the whole page.
         // let block_header = Header::new(page_ptr as *const u8, PAGE_SIZE - Header::SIZE, false);
