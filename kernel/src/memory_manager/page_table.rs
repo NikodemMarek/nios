@@ -213,7 +213,7 @@ mod tests {
 
     #[test_case]
     fn test_satp_calculation() {
-        let page_ptr = 0x80001000 as *const ();
+        let page_ptr = 0xffffffff80001000 as *const ();
         let page_table = PageTable::<PageTableLevelRoot>::new_root(page_ptr);
 
         let satp = page_table.satp();

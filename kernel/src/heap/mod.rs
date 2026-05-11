@@ -158,12 +158,15 @@ impl Heap {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::{heap::Heap, memory_manager::setup_test_pmm};
+    use crate::{
+        heap::Heap,
+        memory_manager::{setup_test_pmm, setup_test_vmm},
+    };
 
     #[test_case]
     fn test_malloc_and_write() {
-        let pmm = setup_test_pmm();
-        let mut heap = Heap::new(pmm);
+        let vmm = setup_test_vmm();
+        let mut heap = Heap::new(vmm);
 
         let size = 16;
         let align = 8;
@@ -183,8 +186,8 @@ pub mod tests {
 
     #[test_case]
     fn test_large_alignment() {
-        let pmm = setup_test_pmm();
-        let mut heap = Heap::new(pmm);
+        let vmm = setup_test_vmm();
+        let mut heap = Heap::new(vmm);
 
         let align = 64;
         let ptr = heap.malloc(8, align);
@@ -194,8 +197,8 @@ pub mod tests {
 
     #[test_case]
     fn test_multiple_allocations() {
-        let pmm = setup_test_pmm();
-        let mut heap = Heap::new(pmm);
+        let vmm = setup_test_vmm();
+        let mut heap = Heap::new(vmm);
 
         let ptr1 = heap.malloc(16, 8);
         assert_eq!(ptr1 as usize % 8, 0);
@@ -213,8 +216,8 @@ pub mod tests {
     fn test_allocation_on_multiple_pages() {
         use crate::memory_manager::PAGE_SIZE;
 
-        let pmm = setup_test_pmm();
-        let mut heap = Heap::new(pmm);
+        let vmm = setup_test_vmm();
+        let mut heap = Heap::new(vmm);
 
         let ptr1 = heap.malloc(100, 8);
         let ptr2 = heap.malloc(4000, 8);

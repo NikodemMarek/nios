@@ -16,3 +16,5 @@ pub trait MemoryManager {
 
 #[cfg(test)]
 pub use pmm::tests::setup_test_pmm;
+#[cfg(test)]
+pub use vmm::tests::setup_test_vmm;

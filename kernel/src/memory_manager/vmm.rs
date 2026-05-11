@@ -33,3 +33,16 @@ impl MemoryManager for Vmm {
         todo!()
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use crate::memory_manager::{MemoryManager, PageTable, setup_test_pmm, vmm::Vmm};
+
+    pub fn setup_test_vmm() -> Vmm {
+        let mut pmm = setup_test_pmm();
+        let root_page_table_ptr = pmm.alloc().unwrap();
+        let root_page_table = PageTable::new_root(root_page_table_ptr);
+
+        Vmm::new(pmm, root_page_table)
+    }
+}
