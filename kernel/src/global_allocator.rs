@@ -3,7 +3,7 @@ use core::{
     cell::{RefCell, RefMut},
 };
 
-use crate::{heap::Heap, memory_manager::MemoryManager};
+use crate::heap::Heap;
 
 pub struct GlobalAllocator(RefCell<Option<Heap>>);
 impl GlobalAllocator {

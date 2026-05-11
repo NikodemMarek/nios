@@ -6,7 +6,7 @@ use crate::{
         block::{Block, try_split_block},
         header::{Header, HeadersIterator},
     },
-    memory_manager::{MemoryManager, PAGE_SIZE, Vmm},
+    memory_manager::{PAGE_SIZE, Vmm},
 };
 
 fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {

@@ -1,4 +1,4 @@
-use crate::memory_manager::{MemoryManager, Pmm, page_table::PageTable};
+use crate::memory_manager::{Pmm, page_table::PageTable};
 
 #[derive(Copy, Clone)]
 pub struct Vmm {
@@ -13,10 +13,8 @@ impl Vmm {
             root_page_table,
         }
     }
-}
 
-impl MemoryManager for Vmm {
-    fn alloc(&mut self) -> Option<*const ()> {
+    pub fn alloc(&mut self) -> Option<*const ()> {
         let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
 
         let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
@@ -29,14 +27,14 @@ impl MemoryManager for Vmm {
         Some(virtual_address as *const ())
     }
 
-    fn free(&mut self, page_ptr: *const ()) {
+    pub fn free(&mut self, page_ptr: *const ()) {
         todo!()
     }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use crate::memory_manager::{MemoryManager, PageTable, setup_test_pmm, vmm::Vmm};
+    use crate::memory_manager::{PageTable, setup_test_pmm, vmm::Vmm};
 
     pub fn setup_test_vmm() -> Vmm {
         let mut pmm = setup_test_pmm();

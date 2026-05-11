@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use crate::{
-    memory_manager::{MemoryManager, PageTable, Pmm, Vmm, create_page_table},
+    memory_manager::{PageTable, Pmm, Vmm, create_page_table},
     traps::TrapFrame,
 };
 

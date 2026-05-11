@@ -1,4 +1,4 @@
-use crate::memory_manager::{MemoryManager, PAGE_SIZE};
+use crate::memory_manager::PAGE_SIZE;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -94,8 +94,8 @@ pub struct Pmm {
     memory_start_ptr: *const u8,
     bitmap: Bitmap,
 }
-impl MemoryManager for Pmm {
-    fn alloc(&mut self) -> Option<*const ()> {
+impl Pmm {
+    pub fn alloc(&mut self) -> Option<*const ()> {
         let free_page_index = self.bitmap.free_page_index()?;
 
         self.bitmap.set_page_status(free_page_index, true);
@@ -105,7 +105,7 @@ impl MemoryManager for Pmm {
         Some(page_ptr)
     }
 
-    fn free(&mut self, page_ptr: *const ()) {
+    pub fn free(&mut self, page_ptr: *const ()) {
         let page_loc = page_ptr as usize;
         let memory_start_loc = self.memory_start_ptr as usize;
         let relative_page_offset = page_loc - memory_start_loc;
@@ -172,9 +172,9 @@ fn init_bitmap(ptr: *mut u8, preoccupied_pages: usize, total_pages: usize) -> Bi
 
 #[cfg(test)]
 pub mod tests {
-    use crate::memory_manager::{MemoryManager, pmm::Sector};
+    use crate::memory_manager::pmm::Sector;
 
-    use super::{Bitmap, PAGE_SIZE, Pmm};
+    use super::{Bitmap, Pmm};
 
     pub fn setup_test_pmm() -> Pmm {
         static mut BITMAP: u64 = 0;

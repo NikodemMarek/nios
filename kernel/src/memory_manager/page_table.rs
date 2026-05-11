@@ -1,4 +1,4 @@
-use crate::memory_manager::{MemoryManager, Pmm, page_table_entry::PageTableEntry};
+use crate::memory_manager::{Pmm, page_table_entry::PageTableEntry};
 
 #[derive(Copy, Clone)]
 pub struct PageTableLevelRoot;
