@@ -67,16 +67,14 @@ pub extern "C" fn kernel_main() {
 
         qemu::exit(qemu::ExitCode::Success);
     } else {
-        let mut vmm = Vmm::new(pmm, root_page_table);
+        let vmm = Vmm::new(pmm, root_page_table);
         let heap = Heap::new(vmm);
 
         ALLOCATOR.init(heap);
-        STATE.init();
+        STATE.init(pmm);
 
-        STATE
-            .get()
-            .add(&mut vmm, dummy_program as *const () as usize);
-        STATE.get().add(&mut vmm, shell as *const () as usize);
+        STATE.get().add(dummy_program as *const () as usize);
+        STATE.get().add(shell as *const () as usize);
 
         // start the interrupts immidiately
         crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
@@ -94,8 +92,8 @@ impl KernelState {
         Self(RefCell::new(None))
     }
     #[inline]
-    pub fn init(&self) {
-        *self.0.borrow_mut() = Some(Scheduler::new());
+    pub fn init(&self, pmm: Pmm) {
+        *self.0.borrow_mut() = Some(Scheduler::new(pmm));
     }
 
     #[inline]

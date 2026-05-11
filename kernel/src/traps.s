@@ -67,6 +67,9 @@ save_regs:
     csrr t0, sstatus
     sd t0, 256(sp)
 
+    csrr t0, satp
+    sd t0, 264(sp)
+
 handle_trap:
     // move the machine cause to function argument, and call the trap handler
     mv a0, sp
@@ -125,6 +128,16 @@ restore_regs:
     ld t0,  248(sp)
     csrw sepc, t0
 
+    // this breaks the U-mode entry, should be done via kernel-stack
+    ld t0,  264(sp)
+    csrw sscratch, t0
+
     ld t0,  32(sp)
     ld x2,  8(sp)
+
+    csrrw t0, sscratch, t0
+    csrw satp, t0
+    sfence.vma zero, zero
+    csrrw t0, sscratch, zero
+
     sret

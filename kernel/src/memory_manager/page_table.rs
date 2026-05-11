@@ -121,7 +121,7 @@ impl PageTable<PageTableLevelRoot> {
     }
 
     pub fn satp(&self) -> u64 {
-        let ppn = (self.ptr as u64) >> 12;
+        let ppn = (get_phys_ptr(self.ptr as *const ()) as u64) >> 12;
         (0b1000u64 << 60) | ppn
     }
 
@@ -141,6 +141,7 @@ impl PageTable<PageTableLevelRoot> {
         Some((l2_index, l1_index, l0_index))
     }
 }
+
 impl PageTable<PageTableLevelL1> {
     pub fn add_megapage(&mut self, pmm: &mut super::Pmm) -> Option<usize> {
         self.add_leaf(pmm)
@@ -179,7 +180,20 @@ pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
 
     let root_page_table_ptr = unsafe { &_root_page_table_virt } as *const u8;
     let mut root_page_table = PageTable::new_root(root_page_table_ptr as *const ());
+
+    create_page_table(pmm, &mut root_page_table);
+
+    unsafe {
+        core::arch::asm!("sfence.vma zero, zero");
+    }
+
+    root_page_table
+}
+pub fn create_page_table(pmm: &mut Pmm, root_page_table: &mut PageTable<PageTableLevelRoot>) {
     root_page_table.add_page(pmm); // reserve page starting at 0x0 because it will produce null-pointer
+
+    // create a gigapage mapping for kernel in higher-half
+    root_page_table.set_pte(510, PageTableEntry::leaf(0x80000000 as *const ()));
 
     // create a megapage mapping for UART
     let mut l1_page_table = root_page_table.set_page_table::<PageTableLevelL1>(pmm, 508);
@@ -191,12 +205,6 @@ pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
 
     // remove identity mapping
     root_page_table.set_pte(2, PageTableEntry::empty());
-
-    unsafe {
-        core::arch::asm!("sfence.vma zero, zero");
-    }
-
-    root_page_table
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ pub struct TrapFrame {
     pub t3_t6: [u64; 4],
     pub sepc: u64,
     pub sstatus: u64,
-    pub _padding: u64,
+    pub satp: u64,
 }
 impl core::fmt::Display for TrapFrame {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -56,7 +56,8 @@ impl core::fmt::Display for TrapFrame {
         write_reg("       ", self.t3_t6[1])?;
         write_reg("       ", self.t3_t6[2])?;
         write_reg("       ", self.t3_t6[3])?;
-        write_reg("  sepc:", self.sepc)
+        write_reg("  sepc:", self.sepc)?;
+        write_reg("  satp:", self.satp)
     }
 }
 

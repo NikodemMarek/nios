@@ -1,24 +1,33 @@
 use alloc::vec::Vec;
 
 use crate::{
-    memory_manager::{MemoryManager, Vmm},
+    memory_manager::{MemoryManager, PageTable, Pmm, Vmm, create_page_table},
     traps::TrapFrame,
 };
 
 pub struct Scheduler {
+    pmm: Pmm,
     current_program: Option<usize>,
     programs: Vec<TrapFrame>,
 }
 impl Scheduler {
-    pub fn new() -> Self {
+    pub fn new(pmm: Pmm) -> Self {
         Self {
+            pmm,
             current_program: None,
             programs: Default::default(),
         }
     }
 
-    pub fn add(&mut self, mm: &mut Vmm, program_loc: usize) {
-        let stack_page_ptr = mm.alloc().expect("MM out of pages");
+    pub fn add(&mut self, program_loc: usize) {
+        let process_root_page_table_ptr = self.pmm.alloc().expect("PMM out of pages!");
+        let mut process_root_page_table = PageTable::new_root(process_root_page_table_ptr);
+        create_page_table(&mut self.pmm, &mut process_root_page_table);
+
+        let mut process_vmm = Vmm::new(self.pmm, process_root_page_table);
+
+        process_vmm.alloc().expect("MM out of pages");
+        let stack_page_ptr = process_vmm.alloc().expect("MM out of pages");
         let stack_page_ptr =
             unsafe { (stack_page_ptr as *const u8).add(crate::memory_manager::PAGE_SIZE) };
 
@@ -26,6 +35,7 @@ impl Scheduler {
             sp: stack_page_ptr as u64,
             sepc: program_loc as u64,
             sstatus: 0b100100000, // SPP = 1 (Supervisor), SPIE = 1 (Enable interrupts on sret)
+            satp: process_root_page_table.satp(),
             ..Default::default()
         });
     }
@@ -48,7 +58,7 @@ impl Iterator for Scheduler {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.programs.len() == 0 {
+        if self.programs.is_empty() {
             return None;
         }
 
