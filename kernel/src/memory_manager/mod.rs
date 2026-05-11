@@ -9,6 +9,31 @@ pub use vmm::Vmm;
 
 pub const PAGE_SIZE: usize = 4096;
 
+#[derive(Copy, Clone)]
+pub struct PhysicalAddress(usize);
+impl<T> From<*const T> for PhysicalAddress {
+    fn from(value: *const T) -> Self {
+        Self(value as usize)
+    }
+}
+impl From<usize> for PhysicalAddress {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+#[derive(Copy, Clone)]
+pub struct VirtualAddress(usize);
+impl<T> From<*const T> for VirtualAddress {
+    fn from(value: *const T) -> Self {
+        Self(value as usize)
+    }
+}
+impl From<usize> for VirtualAddress {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
 #[cfg(test)]
 pub use pmm::tests::setup_test_pmm;
 #[cfg(test)]

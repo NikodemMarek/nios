@@ -20,8 +20,8 @@ impl Scheduler {
     }
 
     pub fn add(&mut self, program_loc: usize) {
-        let process_root_page_table_ptr = self.pmm.alloc().expect("PMM out of pages!");
-        let mut process_root_page_table = PageTable::new_root(process_root_page_table_ptr);
+        let process_root_page_table_addr = self.pmm.alloc().expect("PMM out of pages!").into();
+        let mut process_root_page_table = PageTable::new_root(process_root_page_table_addr);
         create_page_table(&mut self.pmm, &mut process_root_page_table);
 
         let mut process_vmm = Vmm::new(self.pmm, process_root_page_table);

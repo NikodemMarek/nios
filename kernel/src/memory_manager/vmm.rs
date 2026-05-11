@@ -38,8 +38,7 @@ pub mod tests {
 
     pub fn setup_test_vmm() -> Vmm {
         let mut pmm = setup_test_pmm();
-        let root_page_table_ptr = pmm.alloc().unwrap();
-        let root_page_table = PageTable::new_root(root_page_table_ptr);
+        let root_page_table = PageTable::new_root(pmm.alloc().unwrap().into());
 
         Vmm::new(pmm, root_page_table)
     }

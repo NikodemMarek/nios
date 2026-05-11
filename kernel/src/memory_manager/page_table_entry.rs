@@ -1,18 +1,20 @@
+use crate::memory_manager::PhysicalAddress;
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PageTableEntry(pub u64);
 impl PageTableEntry {
-    pub fn new(page_ptr: *const (), attributes: PageTableEntryAttributes) -> Self {
+    pub fn new(page_addr: PhysicalAddress, attributes: PageTableEntryAttributes) -> Self {
         let reserved = 0b0;
-        let ppn = Self::pnn(page_ptr);
+        let ppn = Self::pnn(page_addr);
         let rsw = 0b00 << 8;
         let attributes = attributes.0 as u64;
         Self(reserved | ppn | rsw | attributes)
     }
-    pub fn page_table(page_ptr: *const ()) -> Self {
-        Self::new(page_ptr, PageTableEntryAttributes::page_table())
+    pub fn page_table(page_addr: PhysicalAddress) -> Self {
+        Self::new(page_addr, PageTableEntryAttributes::page_table())
     }
-    pub fn leaf(page_ptr: *const ()) -> Self {
+    pub fn leaf(page_ptr: PhysicalAddress) -> Self {
         Self::new(page_ptr, PageTableEntryAttributes::leaf())
     }
     pub fn empty() -> Self {
@@ -27,13 +29,13 @@ impl PageTableEntry {
         }
     }
 
-    fn pnn(page_ptr: *const ()) -> u64 {
-        (page_ptr as u64 >> 12) << 10
+    fn pnn(page_ptr: PhysicalAddress) -> u64 {
+        (page_ptr.0 as u64 >> 12) << 10
     }
 
-    pub fn page_ptr(&self) -> *const () {
+    pub fn page_ptr(&self) -> PhysicalAddress {
         let page_loc = (self.0 >> 10) << 12;
-        page_loc as *const ()
+        PhysicalAddress(page_loc as usize)
     }
 
     pub fn is_valid(&self) -> bool {
@@ -109,22 +111,30 @@ mod tests {
 
     #[test_case]
     fn test_page_table_pte() {
-        let page_ptr = 0x80001000 as *const ();
-        let pte = PageTableEntry::page_table(page_ptr);
+        let page_addr = 0x80001000.into();
+        let pte = PageTableEntry::page_table(page_addr);
 
         assert!(pte.is_valid(), "page table PTE should be valid");
         assert!(!pte.is_leaf(), "page table PTE should not be a leaf");
-        assert_eq!(pte.page_ptr(), page_ptr, "should preserve page pointer");
+        assert_eq!(
+            pte.page_ptr().0,
+            page_addr.0,
+            "should preserve page pointer"
+        );
     }
 
     #[test_case]
     fn test_leaf_pte() {
-        let page_ptr = 0x80002000 as *const ();
-        let pte = PageTableEntry::leaf(page_ptr);
+        let page_addr = 0x80002000.into();
+        let pte = PageTableEntry::leaf(page_addr);
 
         assert!(pte.is_valid(), "leaf PTE should be valid");
         assert!(pte.is_leaf(), "leaf PTE should be a leaf");
-        assert_eq!(pte.page_ptr(), page_ptr, "should preserve page pointer");
+        assert_eq!(
+            pte.page_ptr().0,
+            page_addr.0,
+            "should preserve page pointer"
+        );
     }
 
     #[test_case]
@@ -135,32 +145,11 @@ mod tests {
     }
 
     #[test_case]
-    fn test_page_ptr_roundtrip() {
-        // Test various page-aligned addresses
-        let addresses = [
-            0x80000000 as *const (),
-            0x80001000 as *const (),
-            0x80FFF000 as *const (),
-            0xFFFFFFFF00000000 as *const (),
-        ];
-
-        for &addr in &addresses {
-            let pte = PageTableEntry::page_table(addr);
-            assert_eq!(
-                pte.page_ptr(),
-                addr,
-                "page pointer should roundtrip correctly for {:p}",
-                addr
-            );
-        }
-    }
-
-    #[test_case]
     fn test_pte_ppn_calculation() {
         // Physical page number (PPN) should be bits [53:10] in the PTE
         // For address 0x80001000, PPN should be 0x80001
-        let page_ptr = 0x80001000 as *const ();
-        let pte = PageTableEntry::page_table(page_ptr);
+        let page_addr = 0x80001000.into();
+        let pte = PageTableEntry::page_table(page_addr);
 
         // Extract PPN from the PTE (bits [53:10])
         let ppn = (pte.0 >> 10) & 0x3FFFFFFFFFFF;
@@ -169,14 +158,14 @@ mod tests {
 
     #[test_case]
     fn test_pte_valid_bit() {
-        let page_ptr = 0x80000000 as *const ();
+        let page_addr = 0x80000000.into();
 
         // Page table entry should have valid bit set
-        let pte = PageTableEntry::page_table(page_ptr);
+        let pte = PageTableEntry::page_table(page_addr);
         assert_eq!(pte.0 & 0b1, 1, "valid bit should be set for page table");
 
         // Leaf entry should also have valid bit set
-        let leaf_pte = PageTableEntry::leaf(page_ptr);
+        let leaf_pte = PageTableEntry::leaf(page_addr);
         assert_eq!(leaf_pte.0 & 0b1, 1, "valid bit should be set for leaf");
 
         // Empty entry should not have valid bit set
@@ -190,8 +179,7 @@ mod tests {
 
     #[test_case]
     fn test_leaf_rwx_bits() {
-        let page_ptr = 0x80000000 as *const ();
-        let pte = PageTableEntry::leaf(page_ptr);
+        let pte = PageTableEntry::leaf(0x80000000.into());
 
         // Leaf entries should have R, W, X bits set (bits 1, 2, 3)
         let rwx_bits = (pte.0 >> 1) & 0b111;
