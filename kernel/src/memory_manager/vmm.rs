@@ -18,7 +18,9 @@ impl Vmm {
 impl MemoryManager for Vmm {
     fn alloc(&mut self) -> Option<*const ()> {
         let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
+
         let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
+        let virtual_address = ((virtual_address as i64) << 25 >> 25) as u64;
 
         unsafe {
             core::arch::asm!("sfence.vma zero, zero");
