@@ -194,18 +194,36 @@ pub fn create_page_table(pmm: &mut Pmm, root_page_table: &mut PageTable<PageTabl
     root_page_table.add_page(pmm); // reserve page starting at 0x0 because it will produce null-pointer
 
     // create a gigapage mapping for kernel in higher-half
-    root_page_table.set_pte(510, PageTableEntry::leaf(PhysicalAddress(0x80000000)));
+    let kernel_map_addr = VirtualAddress(0xffffffff80000000);
+    root_page_table.set_pte(
+        kernel_map_addr.sv39_l2_index(),
+        PageTableEntry::leaf(PhysicalAddress(0x80000000)),
+    );
 
     // create a megapage mapping for UART
-    let mut l1_page_table = root_page_table.set_page_table::<PageTableLevelL1>(pmm, 508);
-    l1_page_table.set_pte(128, PageTableEntry::leaf(PhysicalAddress(0x10000000)));
+    let uart_map_addr = VirtualAddress(0xffffffff10000000);
+    let mut l1_page_table =
+        root_page_table.set_page_table::<PageTableLevelL1>(pmm, uart_map_addr.sv39_l2_index());
+    l1_page_table.set_pte(
+        uart_map_addr.sv39_l1_index(),
+        PageTableEntry::leaf(PhysicalAddress(0x10000000)),
+    );
 
     // create a mapping for qemu
-    let mut l0_page_table = l1_page_table.set_page_table::<PageTableLevelL0>(pmm, 0);
-    l0_page_table.set_pte(256, PageTableEntry::leaf(PhysicalAddress(0x100000)));
+    let qemu_map_addr = VirtualAddress(0xffffffff00100000);
+    let mut l0_page_table =
+        l1_page_table.set_page_table::<PageTableLevelL0>(pmm, qemu_map_addr.sv39_l1_index());
+    l0_page_table.set_pte(
+        qemu_map_addr.sv39_l0_index(),
+        PageTableEntry::leaf(PhysicalAddress(0x100000)),
+    );
 
     // remove identity mapping
-    root_page_table.set_pte(2, PageTableEntry::empty());
+    let identity_kernel_map_addr = VirtualAddress(0x80000000);
+    root_page_table.set_pte(
+        identity_kernel_map_addr.sv39_l2_index(),
+        PageTableEntry::empty(),
+    );
 }
 
 #[cfg(test)]

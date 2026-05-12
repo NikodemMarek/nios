@@ -39,6 +39,16 @@ impl VirtualAddress {
         ((virtual_address as i64) << 25 >> 25) as usize
     }
 
+    pub fn sv39_l2_index(&self) -> usize {
+        (self.0 >> 30) & 0b111111111
+    }
+    pub fn sv39_l1_index(&self) -> usize {
+        (self.0 >> 21) & 0b111111111
+    }
+    pub fn sv39_l0_index(&self) -> usize {
+        (self.0 >> 12) & 0b111111111
+    }
+
     pub fn add(&self, offset: usize) -> Self {
         Self(self.0 + offset)
     }
