@@ -67,8 +67,8 @@ impl<L> PageTable<L> {
     fn add_leaf(&mut self, pmm: &mut Pmm) -> Option<usize> {
         let free_index = self.get_free_index()?;
 
-        let leaf_page_addr = pmm.alloc().expect("PMM out of pages").into();
-        let leaf_page_pte = PageTableEntry::leaf(get_phys_addr(leaf_page_addr));
+        let leaf_page_addr: VirtualAddress = pmm.alloc().expect("PMM out of pages").into();
+        let leaf_page_pte = PageTableEntry::leaf(leaf_page_addr.phys());
 
         self.set_pte(free_index, leaf_page_pte);
 
@@ -93,7 +93,7 @@ impl<L: PageTableHasChildren> PageTable<L> {
                 if !pte.is_valid() {
                     return Some(Found::Empty(index));
                 }
-                let addr = get_virt_addr(pte.page_ptr());
+                let addr = pte.page_ptr().virt();
                 let page_table = PageTable::<C>::existing(addr);
                 (!page_table.is_full()).then_some(Found::NotFull(index, addr))
             })?;
@@ -106,7 +106,7 @@ impl<L: PageTableHasChildren> PageTable<L> {
     fn set_page_table<C>(&mut self, pmm: &mut Pmm, index: usize) -> PageTable<C> {
         let page_table_addr = VirtualAddress(pmm.alloc().expect("PMM out of pages") as usize);
 
-        let page_table_pte = PageTableEntry::page_table(get_phys_addr(page_table_addr));
+        let page_table_pte = PageTableEntry::page_table(page_table_addr.phys());
         self.set_pte(index, page_table_pte);
 
         PageTable::<C>::new(page_table_addr)
@@ -122,7 +122,7 @@ impl PageTable<PageTableLevelRoot> {
     }
 
     pub fn satp(&self) -> u64 {
-        let ppn = (get_phys_addr(self.addr).0 as u64) >> 12;
+        let ppn = (self.addr.phys().0 as u64) >> 12;
         (0b1000u64 << 60) | ppn
     }
 
@@ -165,13 +165,6 @@ impl<L> core::fmt::Display for PageTable<L> {
             .enumerate()
             .try_for_each(|(i, pte)| writeln!(f, "{:#x}: {}", self.addr.0 + i, pte))
     }
-}
-
-fn get_phys_addr(addr: VirtualAddress) -> PhysicalAddress {
-    PhysicalAddress(addr.0 - 0xffffffff00000000)
-}
-fn get_virt_addr(addr: PhysicalAddress) -> VirtualAddress {
-    VirtualAddress(addr.0 + 0xffffffff00000000)
 }
 
 pub fn init_page_table(pmm: &mut Pmm) -> PageTable<PageTableLevelRoot> {
@@ -300,19 +293,5 @@ mod tests {
         // Count the entries without allocating
         let count = page_table.get_ptes().count();
         assert_eq!(count, 512, "should iterate over all 512 entries");
-    }
-
-    #[test_case]
-    fn test_get_phys_addr() {
-        let virt = (0xffffffff00000000usize + 0x80001000).into();
-        let phys = get_phys_addr(virt);
-        assert_eq!(phys.0, 0x80001000);
-    }
-
-    #[test_case]
-    fn test_get_virt_addr() {
-        let phys = 0x80001000.into();
-        let virt = get_virt_addr(phys);
-        assert_eq!(virt.0, 0xffffffff00000000usize + 0x80001000);
     }
 }
