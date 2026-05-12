@@ -26,10 +26,17 @@ impl From<usize> for PhysicalAddress {
 #[derive(Copy, Clone, Default)]
 pub struct VirtualAddress(pub usize);
 impl VirtualAddress {
-    pub fn new_sv39(l2: usize, l1: usize, l0: usize) -> Self {
-        let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
-        let virtual_address = ((virtual_address as i64) << 25 >> 25) as usize;
-        Self(virtual_address)
+    pub fn new_sv39_page(l2: usize, l1: usize, l0: usize) -> Self {
+        Self(Self::sv39_pad((l2 << 30) | (l1 << 21) | (l0 << 12)))
+    }
+    pub fn new_sv39_megapage(l2: usize, l1: usize) -> Self {
+        Self(Self::sv39_pad((l2 << 30) | (l1 << 21)))
+    }
+    pub fn new_sv39_gigapage(l2: usize) -> Self {
+        Self(Self::sv39_pad(l2 << 30))
+    }
+    fn sv39_pad(virtual_address: usize) -> usize {
+        ((virtual_address as i64) << 25 >> 25) as usize
     }
 
     pub fn add(&self, offset: usize) -> Self {

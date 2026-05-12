@@ -15,8 +15,7 @@ impl Vmm {
     }
 
     pub fn alloc(&mut self) -> Option<VirtualAddress> {
-        let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
-        let virtual_address = VirtualAddress::new_sv39(l2, l1, l0);
+        let virtual_address = self.root_page_table.add_page(&mut self.pmm)?;
 
         unsafe {
             core::arch::asm!("sfence.vma zero, zero");

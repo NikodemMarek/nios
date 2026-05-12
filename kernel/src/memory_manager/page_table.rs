@@ -126,28 +126,28 @@ impl PageTable<PageTableLevelRoot> {
         (0b1000u64 << 60) | ppn
     }
 
-    pub fn add_gigapage(&mut self, pmm: &mut Pmm) -> Option<usize> {
-        self.add_leaf(pmm)
+    pub fn add_gigapage(&mut self, pmm: &mut Pmm) -> Option<VirtualAddress> {
+        Some(VirtualAddress::new_sv39_gigapage(self.add_leaf(pmm)?))
     }
-    pub fn add_megapage(&mut self, pmm: &mut Pmm) -> Option<(usize, usize)> {
+    pub fn add_megapage(&mut self, pmm: &mut Pmm) -> Option<VirtualAddress> {
         let (l2_index, mut l1_page_table) =
             self.get_empty_or_non_full_child_page_table::<PageTableLevelL1>(pmm)?;
         let l1_index = l1_page_table.add_megapage(pmm)?;
-        Some((l2_index, l1_index))
+        Some(VirtualAddress::new_sv39_megapage(l2_index, l1_index))
     }
-    pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<(usize, usize, usize)> {
+    pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<VirtualAddress> {
         let (l2_index, mut l1_page_table) =
             self.get_empty_or_non_full_child_page_table::<PageTableLevelL1>(pmm)?;
         let (l1_index, l0_index) = l1_page_table.add_page(pmm)?;
-        Some((l2_index, l1_index, l0_index))
+        Some(VirtualAddress::new_sv39_page(l2_index, l1_index, l0_index))
     }
 }
 
 impl PageTable<PageTableLevelL1> {
-    pub fn add_megapage(&mut self, pmm: &mut Pmm) -> Option<usize> {
+    fn add_megapage(&mut self, pmm: &mut Pmm) -> Option<usize> {
         self.add_leaf(pmm)
     }
-    pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<(usize, usize)> {
+    fn add_page(&mut self, pmm: &mut Pmm) -> Option<(usize, usize)> {
         let (l1_index, mut l0_page_table) =
             self.get_empty_or_non_full_child_page_table::<PageTableLevelL0>(pmm)?;
         let l0_index = l0_page_table.add_page(pmm)?;
@@ -155,7 +155,7 @@ impl PageTable<PageTableLevelL1> {
     }
 }
 impl PageTable<PageTableLevelL0> {
-    pub fn add_page(&mut self, pmm: &mut Pmm) -> Option<usize> {
+    fn add_page(&mut self, pmm: &mut Pmm) -> Option<usize> {
         self.add_leaf(pmm)
     }
 }
