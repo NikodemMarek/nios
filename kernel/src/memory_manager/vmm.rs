@@ -1,4 +1,4 @@
-use crate::memory_manager::{Pmm, page_table::PageTable};
+use crate::memory_manager::{Pmm, VirtualAddress, page_table::PageTable};
 
 #[derive(Copy, Clone)]
 pub struct Vmm {
@@ -14,20 +14,18 @@ impl Vmm {
         }
     }
 
-    pub fn alloc(&mut self) -> Option<*const ()> {
+    pub fn alloc(&mut self) -> Option<VirtualAddress> {
         let (l2, l1, l0) = self.root_page_table.add_page(&mut self.pmm)?;
-
-        let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
-        let virtual_address = ((virtual_address as i64) << 25 >> 25) as u64;
+        let virtual_address = VirtualAddress::new_sv39(l2, l1, l0);
 
         unsafe {
             core::arch::asm!("sfence.vma zero, zero");
         }
 
-        Some(virtual_address as *const ())
+        Some(virtual_address)
     }
 
-    pub fn free(&mut self, page_ptr: *const ()) {
+    pub fn free(&mut self, page_addr: VirtualAddress) {
         todo!()
     }
 }

@@ -9,8 +9,9 @@ pub use vmm::Vmm;
 
 pub const PAGE_SIZE: usize = 4096;
 
+#[repr(C)]
 #[derive(Copy, Clone)]
-pub struct PhysicalAddress(usize);
+pub struct PhysicalAddress(pub usize);
 impl<T> From<*const T> for PhysicalAddress {
     fn from(value: *const T) -> Self {
         Self(value as usize)
@@ -21,8 +22,20 @@ impl From<usize> for PhysicalAddress {
         Self(value)
     }
 }
-#[derive(Copy, Clone)]
-pub struct VirtualAddress(usize);
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct VirtualAddress(pub usize);
+impl VirtualAddress {
+    pub fn new_sv39(l2: usize, l1: usize, l0: usize) -> Self {
+        let virtual_address = (l2 << 30) | (l1 << 21) | (l0 << 12);
+        let virtual_address = ((virtual_address as i64) << 25 >> 25) as usize;
+        Self(virtual_address)
+    }
+
+    pub fn add(&self, offset: usize) -> Self {
+        Self(self.0 + offset)
+    }
+}
 impl<T> From<*const T> for VirtualAddress {
     fn from(value: *const T) -> Self {
         Self(value as usize)

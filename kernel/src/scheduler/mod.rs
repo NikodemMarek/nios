@@ -27,12 +27,11 @@ impl Scheduler {
         let mut process_vmm = Vmm::new(self.pmm, process_root_page_table);
 
         process_vmm.alloc().expect("MM out of pages");
-        let stack_page_ptr = process_vmm.alloc().expect("MM out of pages");
-        let stack_page_ptr =
-            unsafe { (stack_page_ptr as *const u8).add(crate::memory_manager::PAGE_SIZE) };
+        let stack_page_addr = process_vmm.alloc().expect("MM out of pages");
+        let stack_page_addr = stack_page_addr.add(crate::memory_manager::PAGE_SIZE);
 
         self.programs.push(TrapFrame {
-            sp: stack_page_ptr as u64,
+            sp: stack_page_addr.0 as u64,
             sepc: program_loc as u64,
             sstatus: 0b100100000, // SPP = 1 (Supervisor), SPIE = 1 (Enable interrupts on sret)
             satp: process_root_page_table.satp(),
