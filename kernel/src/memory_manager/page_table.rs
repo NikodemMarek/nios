@@ -2,6 +2,11 @@ use crate::memory_manager::{
     PhysicalAddress, Pmm, VirtualAddress, page_table_entry::PageTableEntry,
 };
 
+enum PtePointer<L> {
+    PageTable(PageTable<L>),
+    Leaf,
+}
+
 #[derive(Copy, Clone)]
 pub struct PageTableLevelRoot;
 #[derive(Copy, Clone)]
@@ -93,7 +98,7 @@ impl<L: PageTableHasChildren> PageTable<L> {
                 if !pte.is_valid() {
                     return Some(Found::Empty(index));
                 }
-                let addr = pte.page_ptr().virt();
+                let addr = pte.page_addr().virt();
                 let page_table = PageTable::<C>::existing(addr);
                 (!page_table.is_full()).then_some(Found::NotFull(index, addr))
             })?;
@@ -121,6 +126,40 @@ impl PageTable<PageTableLevelRoot> {
         }
     }
 
+    pub fn map_page(&mut self, pmm: &mut Pmm, virt: VirtualAddress, phys: PhysicalAddress) {
+        let PtePointer::PageTable(mut l1_page_table) = self.map(pmm, virt, phys) else {
+            return;
+        };
+        let PtePointer::PageTable(mut l0_page_table) = l1_page_table.map(pmm, virt, phys) else {
+            return;
+        };
+        l0_page_table.map(pmm, virt, phys);
+    }
+    fn map(
+        &mut self,
+        pmm: &mut Pmm,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+    ) -> PtePointer<PageTableLevelL1> {
+        let slot = virt.sv39_l2_index();
+        let slot_pte = self.get_pte(slot);
+
+        if virt.is_gigapage() {
+            self.set_pte(slot, PageTableEntry::leaf(phys));
+            return PtePointer::Leaf;
+        };
+
+        assert!(!slot_pte.is_leaf(), "Tried to map new page at leaf!");
+
+        PtePointer::PageTable(if slot_pte.is_valid() {
+            PageTable::existing(slot_pte.page_addr().virt())
+        } else {
+            let page_addr: VirtualAddress = pmm.alloc().expect("PMM out of pages!").into();
+            self.set_pte(slot, PageTableEntry::page_table(page_addr.phys()));
+            PageTable::new(page_addr)
+        })
+    }
+
     pub fn satp(&self) -> u64 {
         let ppn = (self.addr.phys().0 as u64) >> 12;
         (0b1000u64 << 60) | ppn
@@ -144,6 +183,31 @@ impl PageTable<PageTableLevelRoot> {
 }
 
 impl PageTable<PageTableLevelL1> {
+    fn map(
+        &mut self,
+        pmm: &mut Pmm,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+    ) -> PtePointer<PageTableLevelL0> {
+        let slot = virt.sv39_l1_index();
+        let slot_pte = self.get_pte(slot);
+
+        if virt.is_megapage() {
+            self.set_pte(slot, PageTableEntry::leaf(phys));
+            return PtePointer::Leaf;
+        };
+
+        assert!(!slot_pte.is_leaf(), "Tried to map new page at leaf!");
+
+        PtePointer::PageTable(if slot_pte.is_valid() {
+            PageTable::existing(slot_pte.page_addr().virt())
+        } else {
+            let page_addr: VirtualAddress = pmm.alloc().expect("PMM out of pages!").into();
+            self.set_pte(slot, PageTableEntry::page_table(page_addr.phys()));
+            PageTable::new(page_addr)
+        })
+    }
+
     fn add_megapage(&mut self, pmm: &mut Pmm) -> Option<usize> {
         self.add_leaf(pmm)
     }
@@ -155,6 +219,17 @@ impl PageTable<PageTableLevelL1> {
     }
 }
 impl PageTable<PageTableLevelL0> {
+    fn map(&mut self, pmm: &mut Pmm, virt: VirtualAddress, phys: PhysicalAddress) {
+        let slot = virt.sv39_l0_index();
+        let slot_pte = self.get_pte(slot);
+
+        assert!(!slot_pte.is_leaf(), "Tried to map new page at leaf!");
+
+        if !slot_pte.is_valid() {
+            self.set_pte(slot, PageTableEntry::leaf(phys));
+        }
+    }
+
     fn add_page(&mut self, pmm: &mut Pmm) -> Option<usize> {
         self.add_leaf(pmm)
     }
@@ -187,34 +262,29 @@ pub fn create_page_table(pmm: &mut Pmm, root_page_table: &mut PageTable<PageTabl
     root_page_table.add_page(pmm); // reserve page starting at 0x0 because it will produce null-pointer
 
     // create a gigapage mapping for kernel in higher-half
-    let kernel_map_addr = VirtualAddress(0xffffffff80000000);
-    root_page_table.set_pte(
-        kernel_map_addr.sv39_l2_index(),
-        PageTableEntry::leaf(PhysicalAddress(0x80000000)),
+    root_page_table.map_page(
+        pmm,
+        VirtualAddress(0xffffffff80000000),
+        PhysicalAddress(0x80000000),
     );
 
     // create a megapage mapping for UART
-    let uart_map_addr = VirtualAddress(0xffffffff10000000);
-    let mut l1_page_table =
-        root_page_table.set_page_table::<PageTableLevelL1>(pmm, uart_map_addr.sv39_l2_index());
-    l1_page_table.set_pte(
-        uart_map_addr.sv39_l1_index(),
-        PageTableEntry::leaf(PhysicalAddress(0x10000000)),
+    root_page_table.map_page(
+        pmm,
+        VirtualAddress(0xffffffff10000000),
+        PhysicalAddress(0x10000000),
     );
 
     // create a mapping for qemu
-    let qemu_map_addr = VirtualAddress(0xffffffff00100000);
-    let mut l0_page_table =
-        l1_page_table.set_page_table::<PageTableLevelL0>(pmm, qemu_map_addr.sv39_l1_index());
-    l0_page_table.set_pte(
-        qemu_map_addr.sv39_l0_index(),
-        PageTableEntry::leaf(PhysicalAddress(0x100000)),
+    root_page_table.map_page(
+        pmm,
+        VirtualAddress(0xffffffff00100000),
+        PhysicalAddress(0x100000),
     );
 
     // remove identity mapping
-    let identity_kernel_map_addr = VirtualAddress(0x80000000);
     root_page_table.set_pte(
-        identity_kernel_map_addr.sv39_l2_index(),
+        VirtualAddress(0x80000000).sv39_l2_index(),
         PageTableEntry::empty(),
     );
 }

@@ -33,7 +33,7 @@ impl PageTableEntry {
         (page_ptr.0 as u64 >> 12) << 10
     }
 
-    pub fn page_ptr(&self) -> PhysicalAddress {
+    pub fn page_addr(&self) -> PhysicalAddress {
         let page_loc = (self.0 >> 10) << 12;
         PhysicalAddress(page_loc as usize)
     }
@@ -117,7 +117,7 @@ mod tests {
         assert!(pte.is_valid(), "page table PTE should be valid");
         assert!(!pte.is_leaf(), "page table PTE should not be a leaf");
         assert_eq!(
-            pte.page_ptr().0,
+            pte.page_addr().0,
             page_addr.0,
             "should preserve page pointer"
         );
@@ -131,7 +131,7 @@ mod tests {
         assert!(pte.is_valid(), "leaf PTE should be valid");
         assert!(pte.is_leaf(), "leaf PTE should be a leaf");
         assert_eq!(
-            pte.page_ptr().0,
+            pte.page_addr().0,
             page_addr.0,
             "should preserve page pointer"
         );

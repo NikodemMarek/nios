@@ -55,6 +55,13 @@ impl VirtualAddress {
         (self.0 >> 12) & 0b111111111
     }
 
+    pub fn is_gigapage(&self) -> bool {
+        self.sv39_l1_index() == 0 && self.sv39_l0_index() == 0
+    }
+    pub fn is_megapage(&self) -> bool {
+        self.sv39_l0_index() == 0
+    }
+
     pub fn phys(&self) -> PhysicalAddress {
         PhysicalAddress(self.0 - 0xffffffff00000000)
     }
