@@ -2,6 +2,8 @@
 resolver = "2"
 
 members = [
+    "kernel-utils",
+
     "kernel",
     "shell"
 ]

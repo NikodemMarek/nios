@@ -130,7 +130,7 @@ pub fn try_split_block(block_a: Block, requested_capacity: usize) -> (Block, Opt
 pub mod tests {
     use super::{Block, try_split_block};
 
-    #[test_case]
+    #[test]
     fn test_block_split() {
         let block = Block::occupied(0 as *const u8, 100, 0);
         let (block_a, block_b) = try_split_block(block, 90);

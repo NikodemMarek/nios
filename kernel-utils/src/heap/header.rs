@@ -1,4 +1,4 @@
-use crate::memory_manager::PAGE_SIZE;
+use crate::PAGE_SIZE;
 
 #[repr(C)]
 #[derive(Copy, Clone)]

@@ -2,11 +2,11 @@ mod block;
 mod header;
 
 use crate::{
+    PAGE_SIZE,
     heap::{
         block::{Block, try_split_block},
         header::{Header, HeadersIterator},
     },
-    memory_manager::{PAGE_SIZE, Vmm},
 };
 
 fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {
@@ -16,13 +16,13 @@ fn alignment_offset_from(ptr: *const u8, align: usize) -> usize {
 
 const PAGES_FOR_ALLOC: usize = 20; // Who needs more than 20 pages, lol
 pub struct Heap {
-    mm: Vmm,
+    start_addr: usize,
     allocated_pages: usize,
     pages: [*const u8; PAGES_FOR_ALLOC],
 }
 impl Heap {
-    pub fn new(mut mm: Vmm) -> Self {
-        let initial_page = Self::request_page(&mut mm, 0);
+    pub fn new(start_addr: usize) -> Self {
+        let initial_page = Self::request_page(start_addr, 0);
         let initial_block_header = Header::from_ptr(initial_page as *const Header);
         let initial_block = Block::occupied(
             initial_page as *const u8,
@@ -43,7 +43,7 @@ impl Heap {
         pages[0] = initial_page as *const u8;
 
         Self {
-            mm,
+            start_addr,
             allocated_pages: 1,
             pages,
         }
@@ -132,19 +132,15 @@ impl Heap {
             "Implementation constraint surpassed, too many pages allocated for heap!"
         );
 
-        let page_ptr = Heap::request_page(&mut self.mm, self.allocated_pages) as *const u8;
+        let page_ptr = Self::request_page(self.start_addr, self.allocated_pages) as *const u8;
         self.pages[self.allocated_pages] = page_ptr;
         self.allocated_pages += 1;
         page_ptr
     }
 
-    fn request_page(mm: &mut Vmm, page_number: usize) -> *const () {
-        // let Some(page_ptr) = mm.alloc() else {
-        //     panic!("MM run out of free pages");
-        // };
-        // Mapped to higher-half kernel space.
+    fn request_page(start_addr: usize, page_number: usize) -> *const () {
         // TODO: Move to it's own space.
-        let page_ptr = 0xffffffff80300000 + page_number * PAGE_SIZE;
+        let page_ptr = start_addr + page_number * PAGE_SIZE;
         let page_ptr = page_ptr as *const ();
 
         // Create initial free block on a page, that spans the whole page.
@@ -159,14 +155,18 @@ impl Heap {
 #[cfg(test)]
 pub mod tests {
     use crate::{
-        heap::Heap,
-        memory_manager::{setup_test_pmm, setup_test_vmm},
+        PAGE_SIZE,
+        heap::{Heap, PAGES_FOR_ALLOC},
     };
 
-    #[test_case]
+    fn setup_test_heap() -> Heap {
+        let mem = [0u8; PAGE_SIZE * PAGES_FOR_ALLOC];
+        Heap::new(mem.as_ptr() as usize)
+    }
+
+    #[test]
     fn test_malloc_and_write() {
-        let vmm = setup_test_vmm();
-        let mut heap = Heap::new(vmm);
+        let mut heap = setup_test_heap();
 
         let size = 16;
         let align = 8;
@@ -184,10 +184,9 @@ pub mod tests {
         }
     }
 
-    #[test_case]
+    #[test]
     fn test_large_alignment() {
-        let vmm = setup_test_vmm();
-        let mut heap = Heap::new(vmm);
+        let mut heap = setup_test_heap();
 
         let align = 64;
         let ptr = heap.malloc(8, align);
@@ -195,10 +194,9 @@ pub mod tests {
         assert_eq!(ptr as usize % align, 0);
     }
 
-    #[test_case]
+    #[test]
     fn test_multiple_allocations() {
-        let vmm = setup_test_vmm();
-        let mut heap = Heap::new(vmm);
+        let mut heap = setup_test_heap();
 
         let ptr1 = heap.malloc(16, 8);
         assert_eq!(ptr1 as usize % 8, 0);
@@ -212,12 +210,11 @@ pub mod tests {
         assert_ne!(ptr2, ptr3);
     }
 
-    #[test_case]
+    #[test]
     fn test_allocation_on_multiple_pages() {
-        use crate::memory_manager::PAGE_SIZE;
+        use crate::PAGE_SIZE;
 
-        let vmm = setup_test_vmm();
-        let mut heap = Heap::new(vmm);
+        let mut heap = setup_test_heap();
 
         let ptr1 = heap.malloc(100, 8);
         let ptr2 = heap.malloc(4000, 8);

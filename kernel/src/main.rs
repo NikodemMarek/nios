@@ -8,7 +8,6 @@ extern crate alloc;
 
 mod elf;
 mod global_allocator;
-mod heap;
 mod memory_manager;
 mod panic;
 mod qemu;
@@ -18,10 +17,9 @@ mod traps;
 mod uart;
 
 use core::cell::{RefCell, RefMut};
-use core::fmt::Write;
+use nios_kernel_utils::heap::Heap;
 
 use crate::global_allocator::GlobalAllocator;
-use crate::heap::Heap;
 use crate::memory_manager::{Pmm, Vmm};
 use crate::scheduler::Scheduler;
 
@@ -72,7 +70,7 @@ pub extern "C" fn kernel_main() {
         qemu::exit(qemu::ExitCode::Success);
     } else {
         let vmm = Vmm::new(pmm, root_page_table);
-        let heap = Heap::new(vmm);
+        let heap = Heap::new(0xffffffff80300000);
 
         ALLOCATOR.init(heap);
         STATE.init(pmm);

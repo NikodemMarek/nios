@@ -3,7 +3,7 @@ use core::{
     cell::{RefCell, RefMut},
 };
 
-use crate::heap::Heap;
+use nios_kernel_utils::heap::Heap;
 
 pub struct GlobalAllocator(RefCell<Option<Heap>>);
 impl GlobalAllocator {

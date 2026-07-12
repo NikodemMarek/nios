@@ -11,7 +11,7 @@
   };
 
   scripts.run.exec = ''
-    cargo build || exit 1
+    cargo rbuild || exit 1
 
     echo "Use Ctrl-A X to kill"
     qemu-system-riscv64 \
@@ -25,9 +25,9 @@
   '';
 
   scripts.check.exec = ''
-    cargo build --tests || exit 1
+    cargo rbuild --tests || exit 1
 
-    TEST_BIN=$(cargo build --tests --message-format=json | jq -r 'select(.executable != null) | .executable')
+    TEST_BIN=$(cargo rbuild --tests --message-format=json | jq -r 'select(.executable != null) | .executable')
     qemu-system-riscv64 \
       -machine virt \
       -cpu rv64 \

@@ -9,3 +9,4 @@ test = true
 bench = false
 
 [dependencies]
+nios-kernel-utils = { version = "0.1.0", path = "../kernel-utils" }

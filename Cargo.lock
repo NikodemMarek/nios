@@ -5,6 +5,13 @@ version = 4
 [[package]]
 name = "nios-kernel"
 version = "0.1.0"
+dependencies = [
+ "nios-kernel-utils",
+]
+
+[[package]]
+name = "nios-kernel-utils"
+version = "0.1.0"
 
 [[package]]
 name = "nios-shell"
