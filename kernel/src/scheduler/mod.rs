@@ -19,10 +19,12 @@ impl Scheduler {
         }
     }
 
-    pub fn add(&mut self, program_loc: usize) {
+    pub fn add(&mut self, bytes: &[u8]) {
         let process_root_page_table_addr = self.pmm.alloc().expect("PMM out of pages!").into();
         let mut process_root_page_table = PageTable::new_root(process_root_page_table_addr);
         create_page_table(&mut self.pmm, &mut process_root_page_table);
+
+        let entry_point = crate::elf::load(&mut self.pmm, &mut process_root_page_table, bytes);
 
         let mut process_vmm = Vmm::new(self.pmm, process_root_page_table);
 
@@ -32,7 +34,7 @@ impl Scheduler {
 
         self.programs.push(TrapFrame {
             sp: stack_page_addr.0 as u64,
-            sepc: program_loc as u64,
+            sepc: entry_point,
             sstatus: 0b100100000, // SPP = 1 (Supervisor), SPIE = 1 (Enable interrupts on sret)
             satp: process_root_page_table.satp(),
             ..Default::default()

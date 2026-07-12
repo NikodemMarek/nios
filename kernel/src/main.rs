@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+mod elf;
 mod global_allocator;
 mod heap;
 mod memory_manager;
@@ -13,7 +14,6 @@ mod panic;
 mod qemu;
 mod sbi;
 mod scheduler;
-mod shell;
 mod traps;
 mod uart;
 
@@ -26,6 +26,10 @@ use crate::memory_manager::{Pmm, Vmm};
 use crate::scheduler::Scheduler;
 
 core::arch::global_asm!(include_str!("bootloader.s"));
+
+// TODO: Eventually load from a filesystem.
+pub static SHELL_BINARY: &[u8] =
+    include_bytes!("../../target/riscv64gc-unknown-none-elf/release/nios-shell");
 
 #[global_allocator]
 static ALLOCATOR: GlobalAllocator = GlobalAllocator::empty();
@@ -73,8 +77,7 @@ pub extern "C" fn kernel_main() {
         ALLOCATOR.init(heap);
         STATE.init(pmm);
 
-        STATE.get().add(dummy_program as *const () as usize);
-        STATE.get().add(shell as *const () as usize);
+        STATE.get().add(SHELL_BINARY);
 
         // start the interrupts immidiately
         crate::sbi::set_timer(crate::sbi::read_time() + 1_000_000);
@@ -116,21 +119,6 @@ impl KernelState {
 }
 unsafe impl Send for KernelState {}
 unsafe impl Sync for KernelState {}
-
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".text")]
-pub extern "C" fn shell() {
-    shell::run(&mut crate::uart::Uart::read, &mut crate::uart::Uart);
-}
-
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".text")]
-pub extern "C" fn dummy_program() {
-    crate::uart::Uart
-        .write_str("Dummy program started!\n")
-        .unwrap();
-    loop {}
-}
 
 #[cfg(test)]
 mod test;

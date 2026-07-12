@@ -1,5 +1,5 @@
 use crate::memory_manager::{
-    PhysicalAddress, Pmm, VirtualAddress, page_table_entry::PageTableEntry,
+    PAGE_SIZE, PhysicalAddress, Pmm, VirtualAddress, page_table_entry::PageTableEntry,
 };
 
 enum PtePointer<L> {
@@ -123,6 +123,18 @@ impl PageTable<PageTableLevelRoot> {
         PageTable {
             level: core::marker::PhantomData::<PageTableLevelRoot>,
             addr,
+        }
+    }
+
+    pub fn map_range(&mut self, pmm: &mut Pmm, start: PhysicalAddress, end: PhysicalAddress) {
+        let size_addressed = end.0 - start.0;
+        let size_pages = size_addressed.div_ceil(PAGE_SIZE);
+
+        // TODO: If page is big enough, assign megapage or gigapage.
+
+        for i in 0..size_pages {
+            let addr = start.0 + i * PAGE_SIZE;
+            self.map_page(pmm, VirtualAddress(addr), PhysicalAddress(addr));
         }
     }
 

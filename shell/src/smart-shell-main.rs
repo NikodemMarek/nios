@@ -1,8 +1,54 @@
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
 use alloc::{
     format,
     string::{String, ToString},
     vec::Vec,
 };
+use core::panic::PanicInfo;
+
+#[derive(Copy, Clone)]
+pub struct Uart;
+impl Uart {
+    const ADDRESS: *mut u8 = 0xffffffff10000000 as *mut u8;
+
+    fn print(s: &str) {
+        for c in s.bytes() {
+            unsafe {
+                Uart::ADDRESS.write_volatile(c);
+            }
+        }
+    }
+
+    pub fn read() -> u8 {
+        let lsr_ptr = unsafe { Uart::ADDRESS.add(5) };
+
+        loop {
+            let is_byte_available = unsafe { *lsr_ptr } & 0b1 == 0b1;
+            if is_byte_available {
+                break;
+            }
+        }
+
+        unsafe { *Uart::ADDRESS }
+    }
+}
+impl core::fmt::Write for Uart {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        Uart::print(s);
+        Ok(())
+    }
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text")]
+pub extern "C" fn _start() -> ! {
+    run(&mut Uart::read, &mut Uart);
+    loop {}
+}
 
 enum Command {
     Echo(String),
@@ -87,4 +133,9 @@ fn clear_line(o: &mut impl core::fmt::Write) {
         write!(o, " ").unwrap();
     }
     write!(o, "\r").unwrap();
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
 }
